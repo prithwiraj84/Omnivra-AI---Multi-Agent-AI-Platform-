@@ -348,5 +348,4 @@ lint / test green (vitest 14/14). See each doc's header for the exact format.
 ---
 
 © Omnivra — AI Company OS. Internal project.
-#   O m n i v r a - A I - - - M u l t i - A g e n t - A I - P l a t f o r m -  
- 
+#
