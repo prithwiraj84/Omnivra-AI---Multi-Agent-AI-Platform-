@@ -1,0 +1,28 @@
+[project]
+name = "omnivra-backend"
+version = "2.0.0"
+description = "Omnivra AI Company OS — FastAPI + LangGraph backend"
+requires-python = ">=3.11"
+readme = "README.md"
+
+# Dependencies are pinned in requirements.txt (venv install). This file holds
+# tool configuration (ruff, pytest) and project metadata only — no build step.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "workspace"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]  # long lines tolerated in the agent registry / SQL strings
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

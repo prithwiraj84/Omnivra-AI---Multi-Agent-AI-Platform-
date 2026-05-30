@@ -1,0 +1,116 @@
+# ===========================================================================
+# Omnivra AI Company OS â€” root .gitignore
+# Covers: Node (frontend), Python (backend), env, OS, editors, runtime state.
+# ===========================================================================
+
+# ---------- Environment / secrets ----------
+.env
+.env.*
+!.env.example
+!frontend/.env.example
+!backend/.env.example
+*.local
+*.pem
+*.key
+secrets/
+
+# ---------- Node / Frontend (Vite + React) ----------
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/coverage/
+frontend/stats.html
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+*.tsbuildinfo
+vite.config.*.timestamp-*
+
+# ---------- Python / Backend (FastAPI) ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+backend/.venv/
+.venv/
+venv/
+env/
+backend/build/
+backend/dist/
+backend/*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.hypothesis/
+.python-version
+
+# ---------- Supabase ----------
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ---------- Workspace (AI agent output â€” runtime artifacts only) ----------
+# Generated artifacts and runtime state are NOT tracked. The durable,
+# human-reviewed project state lives in /docs and IS tracked (see below).
+workspace/frontend/
+workspace/backend/
+workspace/presentations/
+workspace/reports/
+workspace/docs/*/
+workspace/.state/checkpoints/
+workspace/.state/artifacts/
+workspace/.state/vectors/
+workspace/.state/workflows/
+workspace/.state/*.json
+workspace/**/*.log
+# Keep the directory skeleton + READMEs so the tree exists on clone.
+!workspace/
+!workspace/**/.gitkeep
+!workspace/**/README.md
+
+# Keep ONLY the root durable docs mirror tracked (anchored to repo root, so it
+# never force-includes the agent-written workspace/docs/* runtime artifacts).
+!/docs/
+!/docs/**
+
+# ---------- Logs / runtime ----------
+logs/
+*.log
+pids/
+*.pid
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Editors / IDE ----------
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+
+# ---------- Misc ----------
+*.bak
+*.tmp
+.cache/
