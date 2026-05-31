@@ -134,6 +134,15 @@ describe('App shell', () => {
     expect(screen.getAllByText(/No tasks/i).length).toBe(4)
   })
 
+  it('renders the Social Studio on /social', () => {
+    // Social drafts fail offline (jsdom) — the studio must still mount and show its
+    // composer (the sidebar nav also labels it, hence getAllByText) + empty state.
+    renderApp('/social')
+    expect(screen.getAllByText(/Social Studio/i).length).toBeGreaterThan(0)
+    expect(screen.getByLabelText(/Content brief/i)).toBeTruthy()
+    expect(screen.getByText(/No drafts yet/i)).toBeTruthy()
+  })
+
   it('renders the run-task control in the greeting hero', () => {
     // RunTask dispatches a task to the CEO agent. Offline (jsdom), the run/awaiting
     // queries simply never resolve — the control must still render without crashing.

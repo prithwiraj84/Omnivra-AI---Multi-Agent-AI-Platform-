@@ -8,6 +8,7 @@ durable across restarts too — see docs/SUPABASE_INTEGRATION.md.
 """
 from __future__ import annotations
 
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,6 +21,7 @@ class WorkflowStore:
     def __init__(self, root: Path) -> None:
         self._dir = Path(root) / ".state" / "workflows"
         self._dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()  # guard JSON I/O (sync routes run in a threadpool)
 
     def _path(self, workflow_id: str) -> Path:
         if not workflow_id or any(c in workflow_id for c in ("/", "\\", "\x00")) or ".." in workflow_id:
@@ -27,24 +29,28 @@ class WorkflowStore:
         return self._dir / f"{workflow_id}.json"
 
     def save(self, run: RunResult) -> None:
-        self._path(run.workflow_id).write_text(run.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+        with self._lock:
+            self._path(run.workflow_id).write_text(run.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
 
     def get(self, workflow_id: str) -> RunResult | None:
         try:
             path = self._path(workflow_id)
         except ValueError:
             return None
-        if not path.exists():
-            return None
-        try:
-            return RunResult.model_validate_json(path.read_text(encoding="utf-8"))
-        except Exception as exc:  # noqa: BLE001 - tolerate a corrupt record
-            logger.warning("Could not read workflow record {}: {}", workflow_id, exc)
-            return None
+        with self._lock:
+            if not path.exists():
+                return None
+            try:
+                return RunResult.model_validate_json(path.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001 - tolerate a corrupt record
+                logger.warning("Could not read workflow record {}: {}", workflow_id, exc)
+                return None
 
     def list(self, *, status: str | None = None) -> list[RunResult]:
+        with self._lock:
+            paths = list(self._dir.glob("*.json"))  # snapshot the listing under the lock
         runs: list[RunResult] = []
-        for path in self._dir.glob("*.json"):
+        for path in paths:
             run = self.get(path.stem)
             if run and (status is None or run.status == status):
                 runs.append(run)

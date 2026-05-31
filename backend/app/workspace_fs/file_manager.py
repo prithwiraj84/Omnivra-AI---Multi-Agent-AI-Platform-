@@ -85,5 +85,16 @@ class FileManager:
     def read_text(self, rel_path: str | Path) -> str:
         return self._resolve(rel_path).read_text(encoding="utf-8")
 
+    def media_file(self, rel_path: str | Path) -> Path:
+        """Resolve a path-jailed artifact for serving (e.g. a rendered .mp4 / image).
+
+        Returns the absolute path (raising WorkspaceViolationError if it escapes the
+        sandbox, FileNotFoundError if it isn't a real file) for a streaming response.
+        """
+        target = self._resolve(rel_path)
+        if not target.is_file():
+            raise FileNotFoundError(str(rel_path))
+        return target
+
     def exists(self, rel_path: str | Path) -> bool:
         return self._resolve(rel_path).exists()

@@ -6,6 +6,7 @@ touch the real workspace and the assertions are isolated per test session.
 """
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -50,3 +51,21 @@ def test_run_writes_and_serves_artifacts() -> None:
         # An unknown artifact path is a 404.
         missing = c.get("/api/workspace/artifacts/docs/does-not-exist-xyz.md")
         assert missing.status_code == 404
+
+        # The binary media endpoint streams the same artifact (bytes) and 404s on miss.
+        media = c.get(f"/api/workspace/media/{one_path}")
+        assert media.status_code == 200
+        assert media.content
+        assert c.get("/api/workspace/media/reports/no-such-media-xyz.mp4").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "payload",
+    ["..%2f..%2f..%2fetc%2fpasswd", "%2e%2e%2f%2e%2e%2fsecret.txt", "....//....//x", "docs%2f..%2f..%2f..%2fmain.py"],
+)
+def test_media_endpoint_blocks_traversal(payload: str) -> None:
+    """The binary media route must never serve a file outside the sandbox: any
+    traversal payload is rejected (400 jail) or 404 — never a 200 with foreign bytes."""
+    with TestClient(app) as c:
+        resp = c.get(f"/api/workspace/media/{payload}")
+        assert resp.status_code in (400, 404), (payload, resp.status_code)

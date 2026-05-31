@@ -53,3 +53,29 @@ class HuggingFaceProvider(BaseProvider):
         if resp.status_code >= 400:
             raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
         return resp.content
+
+    @with_provider_retry(max_attempts=4)
+    async def generate_audio(self, *, text: str, model: str = "canopylabs/orpheus-v1-english") -> bytes:
+        """Synthesize speech via the HF Inference API (Orpheus TTS). Returns raw audio bytes.
+
+        Same request shape as image gen (POST /models/{model} with a text input).
+        """
+        if not self.is_configured:
+            raise FatalProviderError("HUGGINGFACE_API_KEY is not configured")
+        url = self._endpoint.rstrip("/") + f"/models/{model}"
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(
+                    url, headers={"Authorization": f"Bearer {self._api_key}"}, json={"inputs": text}
+                )
+        except httpx.TimeoutException as exc:
+            raise TransientProviderError(f"timeout: {exc}") from exc
+        except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+            raise TransientProviderError(f"connection: {exc}") from exc
+        if resp.status_code == 429:
+            raise RateLimitError(resp.text[:200])
+        if 500 <= resp.status_code < 600:
+            raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
+        if resp.status_code >= 400:
+            raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
+        return resp.content

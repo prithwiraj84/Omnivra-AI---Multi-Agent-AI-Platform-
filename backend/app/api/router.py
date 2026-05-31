@@ -18,6 +18,7 @@ from app.api.routes import (
     media,
     memory,
     projects,
+    social,
     system,
     tasks,
     workflows,
@@ -38,3 +39,4 @@ api_router.include_router(workspace.router, prefix="/workspace")
 api_router.include_router(media.router, prefix="/media")
 api_router.include_router(knowledge.router, prefix="/knowledge")
 api_router.include_router(memory.router, prefix="/memory")
+api_router.include_router(social.router, prefix="/social")

@@ -51,6 +51,18 @@ class Settings(BaseSettings):
     huggingface_api_key: str | None = None
     huggingface_inference_endpoint: str = "https://api-inference.huggingface.co"
 
+    # --- Social pipeline (cp-0016): media source + platform publishers ---
+    # All optional; unset -> the reel/post pipeline runs in stub mode (no real upload).
+    pexels_api_key: str | None = None  # stock B-roll for reels (Pexels Video API)
+    # YouTube uploads use OAuth2 (refresh token), not an API key (cp-0020).
+    youtube_client_id: str | None = None
+    youtube_client_secret: str | None = None
+    youtube_refresh_token: str | None = None
+    instagram_access_token: str | None = None  # Instagram Graph API (reels)
+    facebook_page_token: str | None = None  # Facebook Page (posts)
+    linkedin_access_token: str | None = None  # LinkedIn (posts)
+    twitter_bearer_token: str | None = None  # Twitter / X (posts)
+
     # --- Supabase ---
     supabase_url: str | None = None
     supabase_anon_key: str | None = None

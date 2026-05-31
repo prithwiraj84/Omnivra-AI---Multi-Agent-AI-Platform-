@@ -11,6 +11,7 @@ import { Settings } from '@/pages/Settings'
 import { Login } from '@/pages/Login'
 import { Projects } from '@/pages/Projects'
 import { Tasks } from '@/pages/Tasks'
+import { Social } from '@/pages/Social'
 import { Agents } from '@/pages/Agents'
 import { Workflows } from '@/pages/Workflows'
 import { Approvals } from '@/pages/Approvals'
@@ -52,6 +53,7 @@ export default function App() {
 
         <Route path="/projects" element={<Projects />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route path="/social" element={<Social />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/workflows" element={<Workflows />} />
         <Route path="/approvals" element={<Approvals />} />

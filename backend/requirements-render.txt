@@ -1,0 +1,13 @@
+# ---------------------------------------------------------------------------
+# Omnivra — OPTIONAL real reel render engine (cp-0018). NOT installed by default.
+# The social pipeline degrades to stub rendering (a storyboard manifest) without
+# these; install them to produce real .mp4 reels:
+#     pip install -r requirements-render.txt
+#
+# Pure-venv, no system installs (honors NO-Docker): imageio-ffmpeg vendors the
+# FFmpeg binary, and captions are drawn with Pillow (NOT MoviePy's TextClip, which
+# would require a system ImageMagick install).
+# ---------------------------------------------------------------------------
+moviepy==1.0.3            # video composition (the user-specified stable line)
+imageio-ffmpeg>=0.5,<1    # vendors a static FFmpeg binary (no system install needed)
+pillow>=10,<12            # caption rendering (no ImageMagick dependency)

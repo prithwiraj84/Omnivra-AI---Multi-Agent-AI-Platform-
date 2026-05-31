@@ -293,11 +293,12 @@ providers/Supabase/auth activate via `backend/.env`.
 
 ## Post-1.0 — feature/component parity + review hardening `(DONE — additive over 1.0)`
 
-After the 10-phase 1.0 shipped (`cp-0010-phase10-polish`), five additive, approval-free post-1.0
-checkpoints brought the product to full feature/component parity, applied a lead-engineer review, and
-partitioned the workspace per project. These are tracked as checkpoints `cp-0011..cp-0015` (full records
-in `docs/CHECKPOINTS.md`); they do not introduce a new numbered phase — phases 1–10 remain the project's
-spine.
+After the 10-phase 1.0 shipped (`cp-0010-phase10-polish`), eleven additive, approval-free post-1.0
+checkpoints brought the product to full feature/component parity, applied two lead-engineer reviews,
+partitioned the workspace per project, and built the social content pipeline (compose → render →
+human-approve → publish, with a real YouTube uploader). These are tracked as checkpoints
+`cp-0011..cp-0021` (full records in `docs/CHECKPOINTS.md`); they do not introduce a new numbered phase —
+phases 1–10 remain the project's spine.
 
 ### cp-0011 — Remaining nav pages + Agent Hierarchy Tree
 Built every remaining navigable page so the whole sidebar is real: **Agents** (roster grouped by
@@ -373,6 +374,94 @@ round-1 findings, the actionable ones fixed; multi-tenant **authorization** find
 CRITICALs closed, no regressions). Validated: backend `pytest` **95 passed** (70 + `test_project_isolation`
 + `test_workspace_paths`); frontend build exit 0, lint 0, vitest **16/16**.
 
+### cp-0016 — Social content pipeline: backend foundation (offline/stub-first)
+Built Phase 1 of the social content pipeline — the generate → human-approve → publish FLOW for **reels**
+and **posts**, fully offline/stub-first. New `backend/app/schemas/social.py` (`ReelScene`/`ReelStoryboard`,
+`SocialDraft`, `PublishResult`, request + decision DTOs); a per-project `SocialDraftStore`
+(`backend/app/services/social_store.py`, `.state/social/`, path-jailed ids, added to `reset_caches`);
+`SocialService` (`backend/app/services/social.py`: `draft_reel` → a reel-automation-agent storyboard with
+a deterministic offline fallback + stub Orpheus voiceover + `storyboard.json`/`reel.md` via the jailed
+`FileManager`; `draft_post` → social-strategist caption+hashtags + a stub-safe FLUX image;
+`decide(approve|reject)`); stub platform publishers (`backend/app/services/publishers.py`:
+youtube/instagram for reels, facebook/linkedin/twitter for posts; `is_configured` from new optional config
+keys); and `/api/social` routes (`reel`, `post`, drafts list/get, decision), project-scoped via
+`X-Project-Id`. Reels default to YouTube+Instagram, posts to Facebook+LinkedIn+Twitter. The reel
+storyboard is final; real video render and real uploads are deferred to cp-0018/cp-0020. Validated:
+backend `pytest` **102 passed**; frontend unchanged (build exit 0, lint 0, vitest **16/16**).
+
+### cp-0017 — Social Studio frontend (compose → draft → preview → approve/reject)
+Built the `/social` **Social Studio** page (`frontend/src/pages/Social.tsx`): a composer (brief textarea +
+reel|post toggle + selectable target-platform chips) generates drafts; each draft renders as a card with a
+storyboard preview (reels) or caption+hashtags preview (posts), its target chips, and Approve & publish /
+Reject controls; published drafts show per-platform publish results (stub-flagged). New
+`lib/api/social.ts` (`draftReel`/`draftPost`/`listDrafts`/`decideDraft`), `hooks/useSocial.ts`
+(`useSocialDrafts` polled + `useDraftReel`/`useDraftPost`/`useDecideDraft`, project-scoped query keys),
+social wire types in `lib/api/types.ts`, a sidebar nav entry (Clapperboard, violet) + the `/social` route,
+and a smoke test. Fully project-scoped (X-Project-Id via the interceptor + projectId in the query key) and
+offline-safe. **Reviewed** (adversarial 5-lens); applied 2 a11y fixes (empty-targets guard,
+content-derived scene keys). Validated: frontend build exit 0, lint 0, vitest **17/17**; backend unchanged
+(**102 passed**).
+
+### cp-0018 — Real reel render engine (MoviePy + Pexels + Orpheus, async, stub-safe)
+Turned the render-ready storyboard into an actual vertical `.mp4` with a 3-level degradation ladder:
+(1) `moviepy` not installed → stub (the storyboard is the deliverable); (2) installed, no keys → a REAL
+offline `.mp4` from per-scene `ColorClip` backgrounds + Pillow-drawn caption PNG overlays (**no
+ImageMagick**); (3) + Pexels Video API b-roll per scene + Orpheus voiceover (HF `generate_audio`) layered
+in. New `backend/app/services/reel_render.py` (import-guarded, pure/sync, closes every clip before
+unlinking temp PNGs for Windows file-handle safety) + `services/pexels.py` (stub-safe stock-clip fetch) +
+`MediaService.generate_voiceover` + `HuggingFaceProvider.generate_audio`. Async render:
+`POST /api/social/drafts/{id}/render` kicks a FastAPI `BackgroundTask` that runs `render_reel` off the
+event loop via `asyncio.to_thread`, transitioning `render_status` rendering → rendered/failed with `/ws`
+progress; `SocialDraft` gained `render_status`/`video_path`/`render_note`. The engine deps live in an
+**OPTIONAL** `backend/requirements-render.txt` (the core install stays lean). **Reviewed** (adversarial
+5-lens); fixed 1 critical (always-terminal emit, no stuck `rendering`) + 3 high (Windows clip/handle
+cleanup) + a test gap. The real `.mp4` path was verified end-to-end (engine installed), then the engine
+was uninstalled so the committed suite runs stub. Validated: backend `pytest` **106 passed, 1 skipped**
+(the guarded real-render test runs only with the optional engine); frontend unchanged (build exit 0,
+lint 0, vitest **17/17**).
+
+### cp-0019 — Frontend render UX + binary media endpoint
+Wired the render engine into the Social Studio UI. Reel cards get a **Render** button → live render-status
+(none/rendering/rendered/failed, picked up by the 10s drafts poll) → an inline `<video>` player for the
+finished `.mp4`; post cards show the generated FLUX image inline. New backend
+`GET /api/workspace/media/{path:path}` streams a binary artifact (`FileResponse`) via a new path-jailed
+`FileManager.media_file` (`WorkspaceViolationError`→400, missing→404), project-scoped via `?projectId=`
+because native `<video>`/`<img>` elements do not send the `X-Project-Id` header. Frontend: `SocialDraft`
+gained `renderStatus`/`videoPath`/`renderNote`; new `renderDraft()` + `mediaUrl(path, projectId)` helpers
++ `useRenderDraft` hook. **Reviewed** (adversarial 4-lens, all passed); applied a11y fixes (`<video>`
+aria-label, status `aria-live`, unexpected-status fallback) + media path-traversal route tests; declined
+the GlassCard-nesting finding (the inner-panel idiom matches `TaskCard`). Validated: backend `pytest`
+**110 passed, 1 skipped**; frontend build exit 0, lint 0, vitest **17/17**.
+
+### cp-0020 — Real platform uploader #1: YouTube (OAuth resumable upload)
+First **REAL** platform uploader. `backend/app/services/youtube.py` exchanges an OAuth2 refresh token for
+an access token, then does a YouTube Data API v3 **resumable** upload (POST init → `Location` → PUT bytes)
+of the rendered reel `.mp4` as `privacyStatus=private` (a human flips to Public after review). Fully
+guarded + stub-safe + never-raises: no `YOUTUBE_CLIENT_ID/SECRET/REFRESH_TOKEN` → stub
+`PublishResult(ok=true)`; no rendered video / missing file / oversized (>1GB) → `ok=false`; failures →
+`ok=false` + a sanitized note. `publishers.publish_to(platform, draft)` now dispatches youtube → real
+upload, the other four platforms → stubs; `social.decide` passes the full draft. Config gained the YouTube
+OAuth trio (replacing the unused `youtube_api_key`); new `docs/SOCIAL_PUBLISHING.md` documents the
+one-time refresh-token setup + quota notes + per-platform status. The real path is not runnable here (no
+Google creds) — implemented to the API spec + static-reviewed; tests run in stub mode. **Reviewed**
+(adversarial 4-lens); fixed 2 critical (concrete `video/mp4` MIME, sanitized error note) + a high
+(explicit Content-Length) + lows (1GB size guard, defensive id parse). Validated: backend `pytest`
+**111 passed, 1 skipped**; frontend unchanged (build exit 0, lint 0, vitest **17/17**).
+
+### cp-0021 — Full-system review (cp-0015..cp-0020) + concurrency hardening
+Ran a 6-domain full-system review of everything since cp-0014 (the per-project partition + the whole
+social pipeline), each finding adversarially verified, then a lead-engineer sign-off. **PASSED:** security,
+frontend, cross-cutting integration + per-project isolation, regression vs the original 10-phase product.
+Backend-correctness **FAILED** on concurrency; applied the fixes: (HIGH) added `threading.RLock` to
+`WorkflowStore` + `SocialDraftStore` guarding all JSON read/write (both were missed when cp-0014 locked
+`ProjectStore` + `VectorStore`) — closes TOCTOU/corruption under the FastAPI threadpool; (HIGH/MED)
+`begin_render` + the `/render` route now only render a draft still `status='awaiting_approval'`, closing
+the render-vs-decide race; (MED test gap) added a social cascade-delete test. The two remaining medium
+test-coverage items (render failure-injection + concurrent-render stress) are noted as followups. **Verdict
+after fixes: SHIP.** Validated: backend `pytest` **112 passed, 1 skipped** (the skipped test is a guarded
+real-render test that runs only when the optional render engine is installed); frontend build exit 0,
+lint 0, vitest **17/17**.
+
 ---
 
 ## Forward-looking followups (NON-BLOCKING — from the sign-off)
@@ -399,18 +488,35 @@ enhancements noted at the review sign-off:
    the per-project boundary holds at the database. A **per-user project-access model** is explicitly
    **out of scope** for this single-admin offline OS — there is no per-user/per-project ownership by
    design today; it would only be needed if multi-user is ever introduced.
+6. **More platform uploaders.** YouTube is real (cp-0020); add the rest one at a time, atomic per-platform
+   publish + retry of only the failed platform. **LinkedIn and Facebook are the simplest** next. **Instagram**
+   needs a Business account **and** a publicly-hosted video URL (i.e. Supabase Storage / S3 — the Graph API
+   pulls the reel from a URL rather than accepting a byte upload). **Twitter/X** requires a paid API tier.
+7. **Render test coverage.** Add render **failure-injection** tests (engine/clip errors → terminal `failed`
+   + a sanitized note, no stuck `rendering`) and **concurrent-render** stress tests (multiple drafts
+   rendering at once under the new `SocialDraftStore` lock) — the two medium coverage items deferred at the
+   cp-0021 sign-off.
+8. **Async render WORKER for multi-process scale.** Today reel render runs in a FastAPI `BackgroundTask`
+   (`asyncio.to_thread`), which is single-process. For multi-process / horizontal scale, move rendering to a
+   dedicated async **worker** (Redis / Upstash queue) so renders survive a restart and don't compete with
+   request threads.
 
 ---
 
 > **All 10 phases are complete and the build is review-hardened (verdict SHIP) — plus a post-1.0
-> build-out (`cp-0011..cp-0013`) that brings full feature/component parity, a review-hardening pass
-> (`cp-0014`), and a per-project workspace partition (`cp-0015`).** Latest checkpoint:
-> `cp-0015-per-project-workspaces`. Current validation: backend `pytest` **95 passed**; frontend
-> `vite build` exit 0 + `eslint --max-warnings 0` exit 0 + vitest **16/16**. The product runs fully
-> OFFLINE in stub mode (no keys/Supabase required); real providers, Supabase (pgvector + Realtime +
-> Auth/RLS), and the auth gate activate via `backend/.env`. Optional next steps live in the
-> "Forward-looking followups" section above and outside the roadmap: provision Supabase + provider keys,
-> set `AUTH_ENABLED`, and deploy per `docs/DEPLOYMENT.md`.
+> build-out (`cp-0011..cp-0013`) that brings full feature/component parity, a first review-hardening pass
+> (`cp-0014`), a per-project workspace partition (`cp-0015`), a full social content pipeline
+> (`cp-0016..cp-0020`: backend foundation → Social Studio frontend → real reel render engine → render UX
+> + binary media endpoint → the YouTube uploader), and a second full-system review + concurrency
+> hardening (`cp-0021`).** Latest checkpoint: `cp-0021-fullsystem-review-hardening`. Current validation:
+> backend `pytest` **112 passed, 1 skipped** (the skipped test is a guarded real-render test that runs
+> only when the optional render engine is installed); frontend `vite build` exit 0 +
+> `eslint --max-warnings 0` exit 0 + vitest **17/17**. The product runs fully OFFLINE in stub mode (no
+> keys/Supabase required); real providers, Supabase (pgvector + Realtime + Auth/RLS), the auth gate, the
+> reel render engine (via `backend/requirements-render.txt`), and the YouTube uploader (via the OAuth
+> trio) activate via `backend/.env`. Optional next steps live in the "Forward-looking followups" section
+> above and outside the roadmap: provision Supabase + provider keys, set `AUTH_ENABLED`, and deploy per
+> `docs/DEPLOYMENT.md`.
 
 ---
 
@@ -467,17 +573,39 @@ enhancements noted at the review sign-off:
       "validation": ["backend pytest 70 passed", "frontend build exit 0, lint 0, vitest 14/14"] },
     { "id": "cp-0015-per-project-workspaces", "title": "Per-project workspace partition + cascade hard-delete + project switcher", "status": "complete", "parent": "cp-0014-post-review-hardening",
       "delivered": ["partitioned the workspace per project: workspace/projects/<project_id>/ isolates artifacts (docs/frontend/backend/presentations/reports) + RAG memory/knowledge (.state/vectors) + workflow runs (.state/workflows) + checkpoints (.checkpoints); GLOBAL = the project catalog (.state/projects.json + tasks.json) + the build-checkpoint lineage (.state/checkpoints)", "new backend/app/workspace_fs/paths.py (DEFAULT_PROJECT='__default__', path-jailed safe_project_id, project_root, list_project_dir_ids, purge_project_workspace, reset_caches, one-time migrate_flat_workspace)", "store singletons -> @lru_cache project-keyed factories (get_artifact/memory/knowledge_service + get_workflow_store(project_id)); workflow_store.find_run/find_by_approval scan all projects", "orchestrator threads the project through run + resume; RunResult.projectId; resume persists back to the owning project", "X-Project-Id header resolved by get_project_id (app/api/deps.py path-jails AND 404s unknown/deleted projects); scoped routes workspace/memory/knowledge/workflows/media; /workflows/run uses the header only (body projectId override removed; RunRequest no longer has project_id)", "seeded never-deletable Default Workspace (__default__); deleting any other project HARD-DELETES its subtree (project_store.delete_project -> purge_project_workspace) with a UI confirm", "one-time startup migration migrate_flat_workspace into projects/__default__/ (idempotent via .state/.migrated_v2_projects; verified end-to-end)", "frontend: active-project zustand store (persisted) + axios X-Project-Id interceptor + project-scoped React Query keys + topbar ProjectSwitcher (switch/inline create/two-step delete-confirm); Tasks board scoped to the active project; useProjects.deleteProject falls back to Default", ".gitignore extended to workspace/projects/ + .state/.migrated_v2_projects", "two adversarial review rounds: 17 round-1 findings (actionable ones fixed); multi-tenant authorization findings consciously declined (single-admin offline OS); round 2 allClosed=true"],
-      "validation": ["backend pytest 95 passed (70 + test_project_isolation + test_workspace_paths)", "frontend build exit 0, lint 0, vitest 16/16 (+ project-switcher.test.tsx)"] }
+      "validation": ["backend pytest 95 passed (70 + test_project_isolation + test_workspace_paths)", "frontend build exit 0, lint 0, vitest 16/16 (+ project-switcher.test.tsx)"] },
+    { "id": "cp-0016-social-pipeline-foundation", "title": "Social content pipeline — backend foundation (offline/stub-first)", "status": "complete", "parent": "cp-0015-per-project-workspaces",
+      "delivered": ["generate -> human-approve -> publish FLOW for reels + posts, fully offline/stub-first", "schemas/social.py (ReelScene/ReelStoryboard, SocialDraft, PublishResult, request + decision DTOs)", "per-project SocialDraftStore (.state/social/, project-keyed factory, path-jailed ids; added to reset_caches)", "SocialService: draft_reel (storyboard + stub voiceover + storyboard.json/reel.md) + draft_post (caption+hashtags + stub-safe FLUX image) + decide(approve|reject)", "stub publishers.py (youtube/instagram for reels; facebook/linkedin/twitter for posts; is_configured from optional config keys)", "/api/social routes (reel, post, drafts list/get, decision) project-scoped via X-Project-Id; reels default YouTube+Instagram, posts Facebook+LinkedIn+Twitter", "real video render + real uploads deferred to cp-0018/cp-0020"],
+      "validation": ["backend pytest 102 passed", "frontend unchanged (build exit 0, lint 0, vitest 16/16)"] },
+    { "id": "cp-0017-social-studio-frontend", "title": "Social Studio frontend (compose -> draft -> preview -> approve/reject)", "status": "complete", "parent": "cp-0016-social-pipeline-foundation",
+      "delivered": ["/social Social Studio page (composer: brief + reel|post toggle + target chips -> draft cards previewing storyboard or caption+tags -> Approve & publish / Reject + publish results)", "lib/api/social.ts (draftReel/draftPost/listDrafts/decideDraft) + hooks/useSocial.ts (useSocialDrafts polled + useDraftReel/useDraftPost/useDecideDraft, project-scoped keys) + social wire types in lib/api/types.ts", "sidebar nav entry (Clapperboard, violet) + /social route + smoke test", "project-scoped (X-Project-Id + projectId in the query key) + offline-safe", "adversarial 5-lens review -> applied 2 a11y fixes (empty-targets guard, content-derived scene keys)"],
+      "validation": ["frontend build exit 0, lint 0, vitest 17/17", "backend unchanged (102 passed)"] },
+    { "id": "cp-0018-reel-render-engine", "title": "Real reel render engine (MoviePy + Pexels + Orpheus, async, stub-safe)", "status": "complete", "parent": "cp-0017-social-studio-frontend",
+      "delivered": ["real vertical .mp4 with a 3-level degradation ladder: stub -> offline ColorClip + Pillow caption-PNG overlay .mp4 (NO ImageMagick) -> + Pexels b-roll + Orpheus voiceover", "reel_render.py (import-guarded, pure/sync, closes every clip before unlinking temp PNGs for Windows file-handle safety) + services/pexels.py + MediaService.generate_voiceover + HuggingFaceProvider.generate_audio", "async render: POST /api/social/drafts/{id}/render BackgroundTask runs render_reel via asyncio.to_thread, render_status rendering -> rendered/failed with /ws progress; SocialDraft render_status/video_path/render_note", "OPTIONAL backend/requirements-render.txt (core install stays lean)", "adversarial 5-lens review -> fixed 1 critical (always-terminal emit) + 3 high (Windows clip/handle cleanup) + a test gap; real .mp4 verified end-to-end then engine uninstalled so the committed suite runs stub"],
+      "validation": ["backend pytest 106 passed, 1 skipped (guarded real-render test runs only with the optional engine)", "frontend unchanged (build exit 0, lint 0, vitest 17/17)"] },
+    { "id": "cp-0019-render-ux", "title": "Frontend render UX + binary media endpoint", "status": "complete", "parent": "cp-0018-reel-render-engine",
+      "delivered": ["reel cards: Render button -> live render-status -> inline <video> player; post cards show the FLUX image inline", "new GET /api/workspace/media/{path:path} streams a binary artifact (FileResponse) via path-jailed FileManager.media_file (violation->400, missing->404), project-scoped via ?projectId= (native <video>/<img> can't send X-Project-Id)", "SocialDraft renderStatus/videoPath/renderNote; renderDraft() + mediaUrl(path, projectId) + useRenderDraft", "adversarial 4-lens review (all passed) -> a11y fixes (video aria-label, status aria-live, unexpected-status fallback) + media path-traversal route tests; declined GlassCard-nesting (inner-panel idiom matches TaskCard)"],
+      "validation": ["backend pytest 110 passed, 1 skipped", "frontend build exit 0, lint 0, vitest 17/17"] },
+    { "id": "cp-0020-youtube-uploader", "title": "Real platform uploader #1 — YouTube (OAuth resumable upload)", "status": "complete", "parent": "cp-0019-render-ux",
+      "delivered": ["app/services/youtube.py: OAuth2 refresh-token -> access token -> YouTube Data API v3 RESUMABLE .mp4 upload, privacyStatus=private, guarded + stub-safe + never-raises", "publishers.publish_to(platform, draft) dispatch (youtube -> real, the other four -> stubs); social.decide passes the full draft", "YouTube OAuth config trio (youtube_client_id/secret/refresh_token) replacing the unused youtube_api_key; backend/.env.example", "docs/SOCIAL_PUBLISHING.md (one-time refresh-token setup + quota notes + per-platform status)", "real path static-reviewed only (no Google creds to run live); tests run in stub mode", "adversarial 4-lens review -> fixed 2 critical (concrete video/mp4 MIME, sanitized error note) + high (Content-Length) + lows (1GB size guard, defensive id parse)"],
+      "validation": ["backend pytest 111 passed, 1 skipped", "frontend unchanged (build exit 0, lint 0, vitest 17/17)"] },
+    { "id": "cp-0021-fullsystem-review-hardening", "title": "Full-system review (cp-0015..cp-0020) + concurrency hardening", "status": "complete", "parent": "cp-0020-youtube-uploader",
+      "delivered": ["6-domain full-system review since cp-0014 (per-project partition + the whole social pipeline); PASSED security/frontend/integration-isolation/regression; backend-correctness FAILED on concurrency", "HIGH: threading.RLock on WorkflowStore + SocialDraftStore guarding all JSON read/write (both missed by cp-0014) — closes TOCTOU/corruption under the FastAPI threadpool", "HIGH/MED: begin_render + the /render route only render a draft still status='awaiting_approval' (closes the render-vs-decide race; /render returns 400 otherwise)", "MED test gap: social cascade-delete test (deleting a project purges its .state/social subtree)", "render failure-injection + concurrent-render stress noted as followups; verdict after fixes: SHIP"],
+      "validation": ["backend pytest 112 passed, 1 skipped (the skipped test is a guarded real-render test that runs only when the optional render engine is installed)", "frontend build exit 0, lint 0, vitest 17/17"] }
   ],
   "forward_looking_followups": [
     "durable Postgres/Supabase LangGraph checkpointer for cross-restart resume of paused approvals (today an in-process MemorySaver; WorkflowStore persists run metadata either way)",
     "broaden store locking or move the JSON stores (VectorStore/ProjectStore/WorkflowStore) to Supabase if concurrency grows",
     "the recursion kill switch is correct + unit-tested but DORMANT in the current linear graph (recursion_count maxes at 1 because ceo runs once and no edge loops back) — re-enable its meaning by adding a replanning edge",
     "prod-hardening checklist before any non-local deploy: override dev defaults (api_secret_key, admin creds), set AUTH_ENABLED=true, consider rate_limit_enabled (see docs/DEPLOYMENT.md)",
-    "map cp-0015 per-project isolation onto Supabase: carry the project_id partition onto a project_id column + Row-Level Security (RLS) so the per-project boundary holds at the DB. A per-user project-access model is explicitly OUT OF SCOPE for this single-admin offline OS (no per-user/per-project ownership by design) — only needed if multi-user is ever introduced"
+    "map cp-0015 per-project isolation onto Supabase: carry the project_id partition onto a project_id column + Row-Level Security (RLS) so the per-project boundary holds at the DB. A per-user project-access model is explicitly OUT OF SCOPE for this single-admin offline OS (no per-user/per-project ownership by design) — only needed if multi-user is ever introduced",
+    "more platform uploaders (YouTube is real as of cp-0020), one at a time, atomic per-platform publish + retry of only the failed platform: LinkedIn/Facebook are the simplest next; Instagram needs a Business account AND a publicly-hosted video URL (Supabase Storage/S3, since the Graph API pulls from a URL); Twitter/X requires a paid API tier",
+    "render test coverage: failure-injection tests (engine/clip errors -> terminal failed + sanitized note, no stuck rendering) + concurrent-render stress tests (multiple drafts under the new SocialDraftStore lock) — the two medium coverage items deferred at the cp-0021 sign-off",
+    "async render WORKER for multi-process scale: today reel render runs in a FastAPI BackgroundTask (asyncio.to_thread, single-process); move it to a dedicated async worker (Redis/Upstash queue) so renders survive a restart and don't compete with request threads",
+    "durable Postgres checkpointer for cross-restart resume (restated from above): replace the in-process MemorySaver so paused approvals survive a backend restart"
   ],
-  "last_checkpoint": "cp-0015-per-project-workspaces",
-  "validation": { "backend_pytest": "95 passed", "frontend": "build exit 0, lint 0 (--max-warnings 0), vitest 16/16" },
+  "last_checkpoint": "cp-0021-fullsystem-review-hardening",
+  "validation": { "backend_pytest": "112 passed, 1 skipped", "frontend": "build exit 0, lint 0 (--max-warnings 0), vitest 17/17" },
   "project_status": "complete"
 }
 ```

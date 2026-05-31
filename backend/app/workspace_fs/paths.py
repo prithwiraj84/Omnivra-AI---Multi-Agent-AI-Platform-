@@ -71,9 +71,10 @@ def reset_caches() -> None:
     from app.services.artifacts import get_artifact_service
     from app.services.knowledge import get_knowledge_service
     from app.services.memory import get_memory_service
+    from app.services.social_store import get_social_store
     from app.services.workflow_store import get_workflow_store
 
-    for factory in (get_artifact_service, get_memory_service, get_knowledge_service, get_workflow_store):
+    for factory in (get_artifact_service, get_memory_service, get_knowledge_service, get_workflow_store, get_social_store):
         factory.cache_clear()
 
 

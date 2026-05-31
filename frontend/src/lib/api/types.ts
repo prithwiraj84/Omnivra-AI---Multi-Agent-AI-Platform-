@@ -200,6 +200,80 @@ export interface TaskCreate {
   agentId?: string
 }
 
+// --- Social content pipeline (cp-0016) --------------------------------------
+
+export type SocialKind = 'reel' | 'post'
+export type SocialStatus = 'awaiting_approval' | 'published' | 'rejected'
+
+/** One shot in a vertical short-form reel (camelCase wire shape). */
+export interface ReelScene {
+  durationSec: number
+  voiceover: string
+  brollQuery: string
+  onScreenText: string
+}
+
+/** The machine-readable plan the video engine renders from. */
+export interface ReelStoryboard {
+  title: string
+  hook: string
+  scenes: ReelScene[]
+  musicMood: string
+  callToAction: string
+  totalDurationSec: number
+}
+
+/** The outcome of (attempting to) publish a draft to one platform. */
+export interface PublishResult {
+  platform: string
+  ok: boolean
+  url: string | null
+  stub: boolean
+  note: string
+}
+
+/**
+ * SocialDraft — a drafted reel/post awaiting approval, then published. camelCase
+ * wire shape of the /api/social endpoints. `storyboard` is set for reels; `caption`
+ * + `hashtags` for posts. `publishResults` is filled once approved.
+ */
+export interface SocialDraft {
+  id: string
+  projectId: string
+  kind: SocialKind
+  brief: string
+  status: SocialStatus
+  targets: string[]
+  storyboard: ReelStoryboard | null
+  renderStatus: string // none | rendering | rendered | failed (reels)
+  videoPath: string | null // workspace-relative .mp4 once rendered
+  renderNote: string | null
+  caption: string | null
+  hashtags: string[]
+  artifacts: string[]
+  publishResults: PublishResult[]
+  createdAt: string
+  note: string | null
+}
+
+/** Request body for POST /api/social/reel. */
+export interface ReelRequest {
+  brief: string
+  targets?: string[]
+}
+
+/** Request body for POST /api/social/post. */
+export interface PostRequest {
+  brief: string
+  targets?: string[]
+}
+
+/** Request body for POST /api/social/drafts/{id}/decision. */
+export interface SocialDecision {
+  action: 'approve' | 'reject'
+  note?: string
+}
+
 /** Icon-resolved shape consumed by the dashboard section components. */
 export interface DashboardData {
   stats: StatCardData[]

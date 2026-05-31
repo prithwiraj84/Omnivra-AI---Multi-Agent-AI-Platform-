@@ -86,6 +86,24 @@ class MediaService:
             ),
         }
 
+    async def generate_voiceover(self, text: str, project_id: str = DEFAULT_PROJECT) -> str | None:
+        """Synthesize a real voiceover (Orpheus via HF) into the workspace; rel path or None.
+
+        Returns None (no audio) when no HF key is configured or synthesis fails — the
+        reel renderer then composes a silent video. Used by the reel render engine.
+        """
+        provider = get_provider_registry().get("huggingface")
+        if not getattr(provider, "is_configured", False):
+            return None
+        try:
+            data = await provider.generate_audio(text=text)  # type: ignore[attr-defined]
+            rel = f"{_MEDIA_DIR}/{uuid.uuid4().hex}.wav"
+            get_artifact_service(project_id).fm.write_bytes(rel, data, agent_id=_AGENT_ID)
+            return rel
+        except Exception as exc:  # noqa: BLE001 - never let TTS break the render
+            logger.warning("Voiceover synthesis failed (continuing silent): {}", repr(exc))
+            return None
+
     async def synthesize(self, text: str, project_id: str = DEFAULT_PROJECT) -> dict[str, Any]:
         """Synthesize speech from ``text`` (TTS). Stubs when the Groq key is unset."""
         fm = get_artifact_service(project_id).fm

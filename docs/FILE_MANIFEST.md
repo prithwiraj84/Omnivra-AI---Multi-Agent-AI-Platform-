@@ -617,12 +617,15 @@
 
 ## Post-1.0 — feature/component parity + review hardening (DONE)
 
-> Additive over the 10-phase 1.0 (`cp-0010-phase10-polish`). Five approval-free post-1.0 checkpoints
-> (`cp-0011..cp-0015`, see `docs/CHECKPOINTS.md`) brought the product to full feature/component parity,
-> applied a lead-engineer review, and partitioned the workspace per project. These are tagged
+> Additive over the 10-phase 1.0 (`cp-0010-phase10-polish`). Eleven approval-free post-1.0 checkpoints
+> (`cp-0011..cp-0021`, see `docs/CHECKPOINTS.md`) brought the product to full feature/component parity,
+> applied two lead-engineer reviews, partitioned the workspace per project, and built the social content
+> pipeline (compose → render → human-approve → publish, with a real YouTube uploader). These are tagged
 > `phase = post-1.0` and `cp` = the originating checkpoint. Current validation across the post-1.0 work:
-> backend `pytest` **95 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0` exit 0 +
-> vitest **16/16**. All files below were enumerated from the live source tree.
+> backend `pytest` **112 passed, 1 skipped** (the skipped test is a guarded real-render test that runs
+> only when the optional render engine is installed); frontend `vite build` exit 0 +
+> `eslint --max-warnings 0` exit 0 + vitest **17/17**. All files below were enumerated from the live
+> source tree.
 
 ### cp-0011 — Remaining nav pages + Agent Hierarchy Tree (`frontend/src/` + `backend/`)
 | Path | Owner | Tree | cp | Status |
@@ -716,6 +719,77 @@
 | `.gitignore` (edited — added `workspace/projects/` + `workspace/.state/.migrated_v2_projects`; per-project runtime trees are not tracked) | architect | source | cp-0015 | DONE |
 | `docs/{PROJECT_STATE,FILE_MANIFEST,CHECKPOINTS,ROADMAP}.md` (reconciled current through cp-0015) | ceo / docs | source | cp-0015 | DONE |
 
+### cp-0016 — Social content pipeline backend foundation (offline/stub-first) (`backend/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/schemas/social.py` (NEW — `ReelScene`/`ReelStoryboard`, `SocialDraft`, `PublishResult`, request + decision DTOs) | api-eng | source | cp-0016 | DONE |
+| `backend/app/services/social.py` (NEW — `SocialService`: `draft_reel` storyboard + stub voiceover + `storyboard.json`/`reel.md`; `draft_post` caption+hashtags + stub-safe FLUX image; `decide(approve|reject)`) | backend-eng | source | cp-0016 | DONE |
+| `backend/app/services/social_store.py` (NEW — per-project `SocialDraftStore` under `.state/social/`, project-keyed factory, path-jailed ids; `threading.RLock` added in cp-0021) | backend-eng | source | cp-0016 | DONE |
+| `backend/app/services/publishers.py` (NEW — stub platform publishers youtube/instagram for reels, facebook/linkedin/twitter for posts; `is_configured` from the optional config keys; `publish_to` dispatch added in cp-0020) | backend-eng | source | cp-0016 | DONE |
+| `backend/app/api/routes/social.py` (NEW — `POST /reel`, `POST /post`, `GET /drafts`, `GET /drafts/{id}`, decision; project-scoped via `get_project_id`) | api-eng | source | cp-0016 | DONE |
+| `backend/app/api/router.py` (edited — mounted `/social`) | api-eng | source | cp-0016 | DONE |
+| `backend/app/core/config.py` (edited — PEXELS/YOUTUBE/INSTAGRAM/FACEBOOK/LINKEDIN/TWITTER keys) | backend-eng | source | cp-0016 | DONE |
+| `backend/.env.example` (edited — social/publisher key placeholders) | backend-eng | source | cp-0016 | DONE |
+| `backend/app/workspace_fs/paths.py` (edited — `reset_caches` now evicts the social store) | backend-eng | source | cp-0016 | DONE |
+| `backend/tests/test_social.py` (NEW — draft/decide/publish flow; render + youtube + cascade-delete tests added in cp-0018/cp-0020/cp-0021) | qa | source | cp-0016 | DONE |
+
+### cp-0017 — Social Studio frontend (compose → draft → preview → approve/reject) (`frontend/src/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `frontend/src/pages/Social.tsx` (NEW — Social Studio: composer + draft cards w/ storyboard or caption preview + Approve & publish / Reject + publish results; render UX added in cp-0019) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/lib/api/social.ts` (NEW — `draftReel`/`draftPost`/`listDrafts`/`decideDraft`; `renderDraft`/`mediaUrl` added in cp-0019) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/hooks/useSocial.ts` (NEW — `useSocialDrafts` polled + `useDraftReel`/`useDraftPost`/`useDecideDraft`, project-scoped keys; `useRenderDraft` added in cp-0019) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/lib/api/types.ts` (edited — social wire types; render fields added in cp-0019) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/config/navigation.ts` (edited — Social Studio nav entry, Clapperboard/violet) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/App.tsx` (edited — `/social` → `Social`) | frontend-eng | source | cp-0017 | DONE |
+| `frontend/src/test/smoke.test.tsx` (edited — asserts `/social` renders; 17 tests total) | qa | source | cp-0017 | DONE |
+
+### cp-0018 — Real reel render engine (MoviePy + Pexels + Orpheus, async, stub-safe) (`backend/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/services/reel_render.py` (NEW — MoviePy+Pillow engine, import-guarded, 3-level degradation ladder; closes every clip before unlinking temp PNGs for Windows file-handle safety) | backend-eng | source | cp-0018 | DONE |
+| `backend/app/services/pexels.py` (NEW — stub-safe Pexels Video API stock-clip fetch) | backend-eng | source | cp-0018 | DONE |
+| `backend/app/services/media.py` (edited — `generate_voiceover`) | backend-eng | source | cp-0018 | DONE |
+| `backend/app/providers/huggingface.py` (edited — `generate_audio`, Orpheus, guarded) | backend-eng | source | cp-0018 | DONE |
+| `backend/app/services/social.py` (edited — async `begin_render`/`run_render`) | backend-eng | source | cp-0018 | DONE |
+| `backend/app/api/routes/social.py` (edited — `POST /drafts/{id}/render` BackgroundTask) | api-eng | source | cp-0018 | DONE |
+| `backend/app/schemas/social.py` (edited — `render_status`/`video_path`/`render_note`) | api-eng | source | cp-0018 | DONE |
+| `backend/requirements-render.txt` (NEW — OPTIONAL render engine deps: moviepy, imageio-ffmpeg, Pillow; core install stays lean) | backend-eng | source | cp-0018 | DONE |
+| `backend/requirements.txt` (edited — note pointing at the optional render extras) | backend-eng | source | cp-0018 | DONE |
+| `backend/tests/test_social.py` (edited — render flow + guarded real-render (skipped without the engine) + deletion-race tests) | qa | source | cp-0018 | DONE |
+
+### cp-0019 — Frontend render UX + binary media endpoint (`backend/` + `frontend/src/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/api/routes/workspace.py` (edited — `GET /api/workspace/media/{path:path}` streams a binary artifact via `FileResponse`, project-scoped via `?projectId=`) | api-eng | source | cp-0019 | DONE |
+| `backend/app/workspace_fs/file_manager.py` (edited — `media_file` path-jailed lookup; `WorkspaceViolationError`→400, missing→404) | backend-eng | source | cp-0019 | DONE |
+| `backend/tests/test_workspace_artifacts.py` (edited — media serve + parametrized path-traversal route tests) | qa | source | cp-0019 | DONE |
+| `frontend/src/pages/Social.tsx` (edited — Render button + render status + inline `<video>` player + inline post `<img>`) | frontend-eng | source | cp-0019 | DONE |
+| `frontend/src/lib/api/social.ts` (edited — `renderDraft` + `mediaUrl(path, projectId)`) | frontend-eng | source | cp-0019 | DONE |
+| `frontend/src/hooks/useSocial.ts` (edited — `useRenderDraft`, invalidates the social queries) | frontend-eng | source | cp-0019 | DONE |
+| `frontend/src/lib/api/types.ts` (edited — `SocialDraft` gained `renderStatus`/`videoPath`/`renderNote`) | frontend-eng | source | cp-0019 | DONE |
+
+### cp-0020 — Real platform uploader #1: YouTube (OAuth resumable upload) (`backend/` + `docs/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/services/youtube.py` (NEW — OAuth2 refresh-token → access token → YouTube Data API v3 resumable `.mp4` upload, `privacyStatus=private`, guarded + stub-safe + never-raises) | backend-eng | source | cp-0020 | DONE |
+| `backend/app/services/publishers.py` (edited — `publish_to(platform, draft)` dispatch: youtube → real, the other four → stubs) | backend-eng | source | cp-0020 | DONE |
+| `backend/app/services/social.py` (edited — `decide` passes the full draft to `publish_to`) | backend-eng | source | cp-0020 | DONE |
+| `backend/app/core/config.py` (edited — YouTube OAuth trio `youtube_client_id`/`youtube_client_secret`/`youtube_refresh_token`, replacing the unused `youtube_api_key`) | backend-eng | source | cp-0020 | DONE |
+| `backend/.env.example` (edited — YouTube OAuth trio) | backend-eng | source | cp-0020 | DONE |
+| `docs/SOCIAL_PUBLISHING.md` (NEW — one-time refresh-token setup, quota notes, per-platform status) | docs / secops | source | cp-0020 | DONE |
+| `backend/tests/test_social.py` (edited — youtube stub-mode test) | qa | source | cp-0020 | DONE |
+
+### cp-0021 — Full-system review (cp-0015..cp-0020) + concurrency hardening (`backend/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/services/workflow_store.py` (edited — `threading.RLock` guarding all JSON read/write; missed by cp-0014) | backend-eng | source | cp-0021 | DONE |
+| `backend/app/services/social_store.py` (edited — `threading.RLock` guarding all JSON read/write) | backend-eng | source | cp-0021 | DONE |
+| `backend/app/services/social.py` (edited — `begin_render` only renders a draft still `status='awaiting_approval'`; closes the render-vs-decide race) | backend-eng | source | cp-0021 | DONE |
+| `backend/app/api/routes/social.py` (edited — `/render` returns 400 unless the draft is awaiting approval) | api-eng | source | cp-0021 | DONE |
+| `backend/tests/test_social.py` (edited — social cascade-delete test: deleting a project purges its `.state/social` subtree) | qa | source | cp-0021 | DONE |
+| `docs/{PROJECT_STATE,FILE_MANIFEST,CHECKPOINTS,ROADMAP}.md` (reconciled current through cp-0021) | ceo / docs | source | cp-0021 | DONE |
+
 ### Orphan note (audit follow-up)
 | Path | Owner | Tree | cp | Status |
 |---|---|---|---|---|
@@ -723,14 +797,18 @@
 
 ---
 
-> **MANIFEST CURRENT THROUGH cp-0015.** All 10 phases plus the post-1.0 build-out (`cp-0011..cp-0013`),
-> the review-hardening pass (`cp-0014`), and the per-project workspace partition (`cp-0015`) are on disk
-> and validated; no rows remain `PENDING`. Every sidebar route is a real page and the entire
-> `DESIGN_SYSTEM.md` component inventory is realized. The former `Placeholder.tsx` orphan was deleted in
-> cp-0014, so no unused source files remain. The per-project runtime trees under `workspace/projects/`
-> (and the `.state/.migrated_v2_projects` marker) are git-ignored, not manifest-tracked.
-> Current validation: backend `pytest` **95 passed**; frontend `vite build` exit 0 +
-> `eslint --max-warnings 0` exit 0 + vitest **16/16**.
+> **MANIFEST CURRENT THROUGH cp-0021.** All 10 phases plus the post-1.0 build-out (`cp-0011..cp-0013`),
+> the first review-hardening pass (`cp-0014`), the per-project workspace partition (`cp-0015`), the full
+> social content pipeline (`cp-0016..cp-0020`: backend foundation, Social Studio frontend, real reel
+> render engine, render UX + binary media endpoint, the YouTube uploader), and the second full-system
+> review + concurrency hardening (`cp-0021`) are on disk and validated; no rows remain `PENDING`. Every
+> sidebar route is a real page and the entire `DESIGN_SYSTEM.md` component inventory is realized. The
+> former `Placeholder.tsx` orphan was deleted in cp-0014, so no unused source files remain. The
+> per-project runtime trees under `workspace/projects/` (and the `.state/.migrated_v2_projects` marker)
+> are git-ignored, not manifest-tracked; `backend/requirements-render.txt` is the OPTIONAL render-engine
+> extras (the core install stays lean). Current validation: backend `pytest` **112 passed, 1 skipped**
+> (the skipped test is a guarded real-render test that runs only when the optional render engine is
+> installed); frontend `vite build` exit 0 + `eslint --max-warnings 0` exit 0 + vitest **17/17**.
 
 ---
 
