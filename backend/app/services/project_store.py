@@ -13,13 +13,25 @@ from typing import Any
 from uuid import uuid4
 
 from app.core.config import get_settings
+from app.core.logging import logger
+from app.workspace_fs.paths import DEFAULT_PROJECT, purge_project_workspace
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# The default bucket: holds unfiled runs + migrated legacy artifacts. Never deletable.
+_DEFAULT_PROJECT_SEED = {
+    "id": DEFAULT_PROJECT,
+    "name": "Default Workspace",
+    "description": "Unfiled workflow runs and migrated (pre-partition) artifacts.",
+    "status": "active",
+    "created_at": _now(),
+}
+
 _SEED_PROJECTS = [
+    dict(_DEFAULT_PROJECT_SEED),
     {"id": "proj-dashboard", "name": "AI Company OS Dashboard", "description": "The Omnivra command center.", "status": "active", "created_at": _now()},
     {"id": "proj-instagram", "name": "Instagram Campaign", "description": "Launch social campaign across reels + posts.", "status": "active", "created_at": _now()},
     {"id": "proj-pitch", "name": "Investor Pitch Deck", "description": "Seed-round investor presentation.", "status": "active", "created_at": _now()},
@@ -45,6 +57,13 @@ class ProjectStore:
         self._lock = threading.RLock()  # guard read-modify-write (sync routes run in a threadpool)
         self._projects: list[dict[str, Any]] = self._load(self._projects_path, _SEED_PROJECTS)
         self._tasks: list[dict[str, Any]] = self._load(self._tasks_path, _SEED_TASKS)
+        self._ensure_default()
+
+    def _ensure_default(self) -> None:
+        """Guarantee the Default Workspace project always exists (even for older catalogs)."""
+        if not any(p.get("id") == DEFAULT_PROJECT for p in self._projects):
+            self._projects.insert(0, dict(_DEFAULT_PROJECT_SEED))
+            self._save_projects()
 
     @staticmethod
     def _load(path: Path, seed: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -84,15 +103,28 @@ class ProjectStore:
         return {**proj, "task_count": 0}
 
     def delete_project(self, project_id: str) -> bool:
+        """Remove a project from the catalog AND hard-delete its workspace subtree.
+
+        The Default Workspace is never deletable. The filesystem cascade (artifacts,
+        RAG memory, run records, checkpoints) runs after the catalog write so a purge
+        failure can't leave a half-deleted catalog.
+        """
+        if project_id == DEFAULT_PROJECT:
+            return False
         with self._lock:
             before = len(self._projects)
             self._projects = [p for p in self._projects if p["id"] != project_id]
             self._tasks = [t for t in self._tasks if t.get("project_id") != project_id]
-            if len(self._projects) != before:
+            removed = len(self._projects) != before
+            if removed:
                 self._save_projects()
                 self._save_tasks()
-                return True
-            return False
+        if removed:
+            try:  # cascade: wipe the project's entire workspace subtree + evict caches
+                purge_project_workspace(project_id)
+            except Exception as exc:  # noqa: BLE001 - never let FS cleanup break the catalog delete
+                logger.warning("Workspace purge failed for project {}: {}", project_id, exc)
+        return removed
 
     # --- Tasks ---
     def list_tasks(self, *, project_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:

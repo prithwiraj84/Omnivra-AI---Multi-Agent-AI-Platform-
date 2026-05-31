@@ -11,21 +11,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ingestWorkspace, knowledgeStats, searchKnowledge } from '@/lib/api/knowledge'
 import type { IngestResult, SearchHit, StoreStats } from '@/lib/api/types'
+import { useProjectStore } from '@/store/project'
 
-/** Knowledge search; disabled until the query is at least two characters long. */
+/** Knowledge search; disabled until the query is at least two characters long (per project). */
 export function useKnowledgeSearch(query: string) {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<SearchHit[]>({
-    queryKey: ['knowledge', 'search', query],
+    queryKey: ['knowledge', 'search', projectId, query],
     queryFn: () => searchKnowledge(query),
     enabled: query.length > 1,
     retry: 1,
   })
 }
 
-/** Knowledge-base document count — one retry so an offline host settles quickly. */
+/** Knowledge-base document count for the active project. */
 export function useKnowledgeStats() {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<StoreStats>({
-    queryKey: ['knowledge', 'stats'],
+    queryKey: ['knowledge', 'stats', projectId],
     queryFn: knowledgeStats,
     retry: 1,
   })

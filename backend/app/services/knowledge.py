@@ -8,15 +8,16 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from app.core.config import get_settings
 from app.core.logging import logger
 from app.services.artifacts import get_artifact_service
 from app.services.vectorstore import VectorStore
+from app.workspace_fs.paths import DEFAULT_PROJECT, project_root
 
 
 class KnowledgeService:
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, project_id: str = DEFAULT_PROJECT) -> None:
         self._store = VectorStore("knowledge", root)
+        self._project_id = project_id
 
     def add_text(self, text: str, source: str = "manual", metadata: dict[str, Any] | None = None, *, id: str | None = None) -> str:
         meta = {"source": source, **(metadata or {})}
@@ -26,8 +27,8 @@ class KnowledgeService:
         return self._store.search(query, k=k)
 
     def ingest_workspace(self) -> int:
-        """Index every workspace artifact into the KB (idempotent by path). Returns count ingested."""
-        svc = get_artifact_service()
+        """Index this project's workspace artifacts into its KB (idempotent by path). Returns count ingested."""
+        svc = get_artifact_service(self._project_id)
         count = 0
         for art in svc.list_artifacts():
             path = art["path"]
@@ -47,6 +48,7 @@ class KnowledgeService:
         return self._store.count
 
 
-@lru_cache(maxsize=1)
-def get_knowledge_service() -> KnowledgeService:
-    return KnowledgeService(str(get_settings().workspace_path))
+@lru_cache(maxsize=None)
+def get_knowledge_service(project_id: str = DEFAULT_PROJECT) -> KnowledgeService:
+    """Per-project knowledge base (isolated RAG corpus per project)."""
+    return KnowledgeService(str(project_root(project_id)), project_id)

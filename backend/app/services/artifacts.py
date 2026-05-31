@@ -12,8 +12,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from app.core.config import get_settings
 from app.workspace_fs.file_manager import SUBDIRS, FileManager
+from app.workspace_fs.paths import DEFAULT_PROJECT, project_root
 
 # agent id -> workspace subdir for its artifacts.
 _CATEGORY: dict[str, str] = {
@@ -103,6 +103,7 @@ class ArtifactService:
         return self.fm.read_text(rel_path)
 
 
-@lru_cache(maxsize=1)
-def get_artifact_service() -> ArtifactService:
-    return ArtifactService(get_settings().workspace_path)
+@lru_cache(maxsize=None)
+def get_artifact_service(project_id: str = DEFAULT_PROJECT) -> ArtifactService:
+    """Per-project ArtifactService (jailed to workspace/projects/<project_id>/)."""
+    return ArtifactService(project_root(project_id))

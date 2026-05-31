@@ -9,11 +9,13 @@ import { useQuery } from '@tanstack/react-query'
 import { listActiveWorkflows, listRuns } from '@/lib/api/workflows'
 import type { RunResult } from '@/lib/api/types'
 import type { WorkflowItem } from '@/types'
+import { useProjectStore } from '@/store/project'
 
-/** Run history — polled every 8s; one retry so an offline host settles quickly. */
+/** Run history — polled every 8s; scoped to the active project. */
 export function useWorkflowRuns(status?: string) {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<RunResult[]>({
-    queryKey: ['workflows', 'runs', status],
+    queryKey: ['workflows', 'runs', projectId, status],
     queryFn: () => listRuns(status),
     refetchInterval: 8000,
     retry: 1,

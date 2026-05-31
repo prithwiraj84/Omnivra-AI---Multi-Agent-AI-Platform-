@@ -5,6 +5,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { KbdHint } from '@/components/ui/kbd-hint'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LiveIndicator } from '@/components/dashboard/live-indicator'
+import { ProjectSwitcher } from '@/components/layout/project-switcher'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,8 +40,9 @@ export function Topbar({ notifications = 12, onSearch, className, ...props }: To
       style={{ backgroundColor: 'var(--omni-bg-topbar)' }}
       {...props}
     >
-      {/* Left: sidebar collapse */}
+      {/* Left: sidebar collapse + active-project switcher */}
       <IconButton icon={Menu} aria-label="Toggle sidebar" onClick={toggleSidebar} />
+      <ProjectSwitcher className="hidden sm:flex" />
 
       {/* Center-left: search (grows to fill) */}
       <div className="relative flex max-w-md flex-1 items-center">

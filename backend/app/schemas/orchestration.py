@@ -6,7 +6,8 @@ from app.schemas.dashboard import CamelModel
 
 class RunRequest(CamelModel):
     task: str
-    project_id: str | None = None
+    # The active project is taken from the X-Project-Id header (get_project_id), not
+    # the body, so a run always lands in the project the UI is scoped to.
 
 
 class AgentRunOutput(CamelModel):
@@ -28,6 +29,7 @@ class RunResult(CamelModel):
     """Result of running the CEO->department orchestration graph for one task."""
 
     workflow_id: str
+    project_id: str | None = None
     status: str  # pending|planning|running|awaiting_approval|completed|failed|stopped|rolled_back
     task: str
     plan: list[str] = []

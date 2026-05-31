@@ -10,21 +10,24 @@
 import { useQuery } from '@tanstack/react-query'
 import { listArtifacts, readArtifact } from '@/lib/api/artifacts'
 import type { Artifact, ArtifactContent } from '@/lib/api/types'
+import { useProjectStore } from '@/store/project'
 
-/** Live artifact list — polled every 10s; one retry so an offline host settles quickly. */
+/** Live artifact list — polled every 10s; scoped to the active project. */
 export function useArtifacts() {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<Artifact[]>({
-    queryKey: ['artifacts'],
+    queryKey: ['artifacts', projectId],
     queryFn: listArtifacts,
     refetchInterval: 10_000,
     retry: 1,
   })
 }
 
-/** The selected artifact's content; disabled until a path is chosen. */
+/** The selected artifact's content; disabled until a path is chosen (scoped to project). */
 export function useArtifact(path: string | null) {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<ArtifactContent>({
-    queryKey: ['artifact', path],
+    queryKey: ['artifact', projectId, path],
     queryFn: () => readArtifact(path!),
     enabled: !!path,
   })

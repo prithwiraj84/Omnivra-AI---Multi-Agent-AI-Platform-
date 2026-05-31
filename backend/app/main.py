@@ -36,12 +36,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings)
     logger.info("Starting {} v{} ({})", settings.app_name, __version__, settings.app_env)
 
-    # Ensure the AI artifact sandbox exists. Agents may ONLY write under here.
-    file_manager = FileManager(settings.workspace_root)
-    file_manager.ensure_layout()
-    app.state.file_manager = file_manager
+    # Ensure the AI artifact sandbox exists. Agents may ONLY write under here, and
+    # only inside their project's subtree (workspace/projects/<project_id>/).
+    from app.services.artifacts import get_artifact_service
+    from app.workspace_fs.paths import DEFAULT_PROJECT, migrate_flat_workspace
+
+    ws_root = settings.workspace_path
+    ws_root.mkdir(parents=True, exist_ok=True)
+    (ws_root / ".state").mkdir(parents=True, exist_ok=True)
+    migrate_flat_workspace()  # one-time: legacy flat layout -> projects/__default__/
+    default_fm = get_artifact_service(DEFAULT_PROJECT).fm  # ensures the default project's subdirs
+    app.state.file_manager = FileManager(ws_root)
     app.state.settings = settings
-    logger.info("Workspace sandbox ready at {}", file_manager.root)
+    logger.info("Workspace sandbox ready at {} (default project at {})", ws_root, default_fm.root)
     logger.info("Agent registry loaded: {} agents", len(AGENT_REGISTRY))
 
     # Realtime heartbeat: broadcasts live system-health + simulated activity over /ws.

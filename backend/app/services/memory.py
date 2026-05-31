@@ -9,8 +9,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from app.core.config import get_settings
 from app.services.vectorstore import VectorStore
+from app.workspace_fs.paths import DEFAULT_PROJECT, project_root
 
 
 class MemoryService:
@@ -44,6 +44,7 @@ class MemoryService:
         return self._store.count
 
 
-@lru_cache(maxsize=1)
-def get_memory_service() -> MemoryService:
-    return MemoryService(str(get_settings().workspace_path))
+@lru_cache(maxsize=None)
+def get_memory_service(project_id: str = DEFAULT_PROJECT) -> MemoryService:
+    """Per-project agent memory (RAG isolated per project — no cross-project recall)."""
+    return MemoryService(str(project_root(project_id)))

@@ -19,15 +19,16 @@ from app.schemas import AgentRunOutput, PendingApproval, RunResult
 from app.services.artifacts import get_artifact_service
 from app.services.memory import get_memory_service
 from app.services.realtime import emit
-from app.services.workflow_store import get_workflow_store
+from app.services.workflow_store import find_run, get_workflow_store
+from app.workspace_fs.paths import safe_project_id
 
 
-def _persist_artifacts_and_memory(workflow_id: str, task: str, state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Write each agent output to ./workspace and store it as recallable memory (RAG)."""
-    outputs = get_artifact_service().persist_run(
+def _persist_artifacts_and_memory(workflow_id: str, task: str, state: dict[str, Any], project_id: str) -> list[dict[str, Any]]:
+    """Write each agent output to the project's workspace + store it as recallable memory (RAG)."""
+    outputs = get_artifact_service(project_id).persist_run(
         workflow_id, task, state.get("plan", []), state.get("agent_outputs", [])
     )
-    memory = get_memory_service()
+    memory = get_memory_service(project_id)
     for o in outputs:
         if o.get("ok") and o.get("content"):
             agent_id = o.get("agent_id")
@@ -51,6 +52,7 @@ def _map_result(
     task: str,
     state: dict[str, Any],
     *,
+    project_id: str,
     status_override: str | None = None,
     pending_payload: dict[str, Any] | None = None,
 ) -> RunResult:
@@ -77,6 +79,7 @@ def _map_result(
     )
     return RunResult(
         workflow_id=workflow_id,
+        project_id=project_id,
         status=status_override or _status_value(state),
         task=task,
         plan=state.get("plan", []),
@@ -99,21 +102,22 @@ def _interrupt_payload(state: dict[str, Any]) -> dict[str, Any] | None:
 
 async def run_workflow(task: str, project_id: str | None = None) -> RunResult:
     """Run the orchestration graph; pause + persist at the approval gate if reached."""
+    pid = safe_project_id(project_id)
     workflow_id = "wf_" + uuid4().hex[:12]
     config = {"configurable": {"thread_id": workflow_id}}
-    store = get_workflow_store()
+    store = get_workflow_store(pid)
 
-    await emit("workflow", {"workflowId": workflow_id, "status": "running", "task": task})
+    await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": "running", "task": task})
     state: dict[str, Any] = await get_compiled_graph().ainvoke(
-        new_state(workflow_id=workflow_id, project_id=project_id or "", task=task), config=config
+        new_state(workflow_id=workflow_id, project_id=pid, task=task), config=config
     )
 
     # Persist each agent output as a workspace artifact (path-jailed) + a run report.
-    state["agent_outputs"] = _persist_artifacts_and_memory(workflow_id, task, state)
+    state["agent_outputs"] = _persist_artifacts_and_memory(workflow_id, task, state, pid)
 
     payload = _interrupt_payload(state)
     if payload:
-        run = _map_result(workflow_id, task, state, status_override="awaiting_approval", pending_payload=payload)
+        run = _map_result(workflow_id, task, state, project_id=pid, status_override="awaiting_approval", pending_payload=payload)
         await emit(
             "approval",
             {
@@ -124,21 +128,32 @@ async def run_workflow(task: str, project_id: str | None = None) -> RunResult:
                 "priority": payload.get("priority", "high"),
             },
         )
-        await emit("workflow", {"workflowId": workflow_id, "status": "awaiting_approval"})
+        await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": "awaiting_approval"})
     else:
-        run = _map_result(workflow_id, task, state)
-        await emit("workflow", {"workflowId": workflow_id, "status": run.status, "agents": len(run.agent_outputs)})
+        run = _map_result(workflow_id, task, state, project_id=pid)
+        await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": run.status, "agents": len(run.agent_outputs)})
 
     store.save(run)
     return run
 
 
-async def resume_workflow(workflow_id: str, action: str, note: str | None = None) -> RunResult:
-    """Resume a paused workflow with a human decision (approve/reject/retry/rollback)."""
-    config = {"configurable": {"thread_id": workflow_id}}
-    store = get_workflow_store()
-    prior = store.get(workflow_id)
+async def resume_workflow(workflow_id: str, action: str, note: str | None = None, project_id: str | None = None) -> RunResult:
+    """Resume a paused workflow with a human decision (approve/reject/retry/rollback).
+
+    ``project_id`` scopes which project's stores receive the resumed artifacts/memory;
+    when omitted it is discovered by scanning all projects for the run.
+    """
+    pid = safe_project_id(project_id)
+    prior = None
+    if project_id is None:
+        located = find_run(workflow_id)
+        if located is not None:
+            pid, prior = located
+    store = get_workflow_store(pid)
+    if prior is None:
+        prior = store.get(workflow_id)
     task = prior.task if prior else ""
+    config = {"configurable": {"thread_id": workflow_id}}
 
     try:
         state: dict[str, Any] = await get_compiled_graph().ainvoke(
@@ -152,8 +167,8 @@ async def resume_workflow(workflow_id: str, action: str, note: str | None = None
             return prior
         raise
 
-    state["agent_outputs"] = _persist_artifacts_and_memory(workflow_id, task, state)
-    run = _map_result(workflow_id, task, state)
-    await emit("workflow", {"workflowId": workflow_id, "status": run.status, "action": action})
+    state["agent_outputs"] = _persist_artifacts_and_memory(workflow_id, task, state, pid)
+    run = _map_result(workflow_id, task, state, project_id=pid)
+    await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": run.status, "action": action})
     store.save(run)
     return run

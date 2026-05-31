@@ -1,6 +1,7 @@
 /** Axios instance for the Omnivra backend. Vite proxies /api and /ws to :8000 (see vite.config.ts). */
 import axios from 'axios'
 import { TOKEN_STORAGE_KEY } from '@/store/auth'
+import { getActiveProjectId } from '@/store/project'
 
 export const api = axios.create({
   baseURL: '/api',
@@ -23,5 +24,7 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.set('Authorization', `Bearer ${token}`)
   }
+  // Scope every request to the active project (backend stores are partitioned by it).
+  config.headers.set('X-Project-Id', getActiveProjectId())
   return config
 })

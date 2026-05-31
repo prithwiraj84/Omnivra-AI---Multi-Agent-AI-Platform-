@@ -89,6 +89,7 @@ export type RunStatus =
  */
 export interface RunResult {
   workflowId: string
+  projectId?: string | null
   status: RunStatus
   task: string
   plan: string[]

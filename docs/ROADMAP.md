@@ -293,10 +293,11 @@ providers/Supabase/auth activate via `backend/.env`.
 
 ## Post-1.0 — feature/component parity + review hardening `(DONE — additive over 1.0)`
 
-After the 10-phase 1.0 shipped (`cp-0010-phase10-polish`), four additive, approval-free post-1.0
-checkpoints brought the product to full feature/component parity and applied a lead-engineer review.
-These are tracked as checkpoints `cp-0011..cp-0014` (full records in `docs/CHECKPOINTS.md`); they do
-not introduce a new numbered phase — phases 1–10 remain the project's spine.
+After the 10-phase 1.0 shipped (`cp-0010-phase10-polish`), five additive, approval-free post-1.0
+checkpoints brought the product to full feature/component parity, applied a lead-engineer review, and
+partitioned the workspace per project. These are tracked as checkpoints `cp-0011..cp-0015` (full records
+in `docs/CHECKPOINTS.md`); they do not introduce a new numbered phase — phases 1–10 remain the project's
+spine.
 
 ### cp-0011 — Remaining nav pages + Agent Hierarchy Tree
 Built every remaining navigable page so the whole sidebar is real: **Agents** (roster grouped by
@@ -340,6 +341,38 @@ threadpool); corrected `README.md` + `docs/DEPLOYMENT.md` test counts 55→70; r
 file (`backend/_audit_recursion.py`). Validated: backend `pytest` **70 passed**; frontend build exit 0,
 lint 0, vitest **14/14**.
 
+### cp-0015 — Per-project workspace partition + cascade hard-delete + project switcher
+Partitioned the workspace **per project** so multiple projects no longer mix. Each project owns an
+isolated `workspace/projects/<project_id>/` subtree with its own artifacts
+(`docs/frontend/backend/presentations/reports`), RAG memory + knowledge base (`.state/vectors`), workflow
+run records (`.state/workflows`) and checkpoints (`.checkpoints`). GLOBAL bits stay shared: the project
+catalog (`.state/projects.json` + `tasks.json`) and the build-checkpoint lineage (`.state/checkpoints`).
+New `backend/app/workspace_fs/paths.py` owns the layout (`DEFAULT_PROJECT="__default__"`, the path-jailed
+`safe_project_id`, `project_root`, `list_project_dir_ids`, `purge_project_workspace`, `reset_caches`, and
+a one-time `migrate_flat_workspace`). Store singletons became `@lru_cache` project-keyed factories
+(`get_artifact_service`/`get_memory_service`/`get_knowledge_service`/`get_workflow_store(project_id)`);
+`workflow_store` also gained module-level `find_run`/`find_by_approval` that scan all projects
+(resume/approval only know an id, not the project). The orchestrator threads the project through run +
+resume (`RunResult.projectId`; resume persists artifacts/memory back to the owning project). Routes scope
+via an `X-Project-Id` header resolved by `get_project_id` (`backend/app/api/deps.py`), which path-jails
+**and** rejects unknown/deleted projects with 404; `/workflows/run` uses **only** the header (the body
+`projectId` override was removed; `RunRequest` no longer has `project_id`). A seeded, never-deletable
+**Default Workspace** (`__default__`); deleting any other project **HARD-DELETES** its whole subtree
+(`project_store.delete_project` → `purge_project_workspace`) with a UI confirm. A one-time startup
+migration moves the legacy flat layout into `projects/__default__/` (idempotent via a
+`.state/.migrated_v2_projects` marker; verified end-to-end on the real workspace). Frontend: an
+active-project zustand store (`store/project.ts`, persisted to localStorage), an axios `X-Project-Id`
+interceptor (`lib/api/client.ts`), project-scoped React Query keys
+(`hooks/{useArtifacts,useMemory,useKnowledge,useWorkflowRuns,useApprovals}.ts`), a topbar
+**ProjectSwitcher** (`components/layout/project-switcher.tsx`: switch / inline create / two-step
+delete-confirm), the Tasks board scoped to the active project, and `useProjects.deleteProject` falling
+back to Default. `.gitignore` extended to `workspace/projects/` + `.state/.migrated_v2_projects`.
+**Reviewed** over two adversarial rounds (a 7-dimension fan-out then a focused fix-verification): 17
+round-1 findings, the actionable ones fixed; multi-tenant **authorization** findings consciously declined
+(single-admin offline OS, no per-user/per-project ownership by design); round 2 `allClosed=true` (both
+CRITICALs closed, no regressions). Validated: backend `pytest` **95 passed** (70 + `test_project_isolation`
++ `test_workspace_paths`); frontend build exit 0, lint 0, vitest **16/16**.
+
 ---
 
 ## Forward-looking followups (NON-BLOCKING — from the sign-off)
@@ -361,15 +394,21 @@ enhancements noted at the review sign-off:
 4. **Prod-hardening checklist (before any non-local deploy).** Override the dev defaults
    (`api_secret_key`, admin credentials), set `AUTH_ENABLED=true`, and consider enabling
    `rate_limit_enabled`. See `docs/DEPLOYMENT.md`.
+5. **Map per-project isolation onto Supabase.** When moving the JSON stores to Supabase, carry the
+   `project_id` partition introduced in cp-0015 onto a `project_id` column + Row-Level Security (RLS) so
+   the per-project boundary holds at the database. A **per-user project-access model** is explicitly
+   **out of scope** for this single-admin offline OS — there is no per-user/per-project ownership by
+   design today; it would only be needed if multi-user is ever introduced.
 
 ---
 
 > **All 10 phases are complete and the build is review-hardened (verdict SHIP) — plus a post-1.0
-> build-out (`cp-0011..cp-0013`) that brings full feature/component parity and a review-hardening pass
-> (`cp-0014`).** Latest checkpoint: `cp-0014-post-review-hardening`. Current validation: backend `pytest`
-> **70 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0` exit 0 + vitest **14/14**. The
-> product runs fully OFFLINE in stub mode (no keys/Supabase required); real providers, Supabase (pgvector
-> + Realtime + Auth/RLS), and the auth gate activate via `backend/.env`. Optional next steps live in the
+> build-out (`cp-0011..cp-0013`) that brings full feature/component parity, a review-hardening pass
+> (`cp-0014`), and a per-project workspace partition (`cp-0015`).** Latest checkpoint:
+> `cp-0015-per-project-workspaces`. Current validation: backend `pytest` **95 passed**; frontend
+> `vite build` exit 0 + `eslint --max-warnings 0` exit 0 + vitest **16/16**. The product runs fully
+> OFFLINE in stub mode (no keys/Supabase required); real providers, Supabase (pgvector + Realtime +
+> Auth/RLS), and the auth gate activate via `backend/.env`. Optional next steps live in the
 > "Forward-looking followups" section above and outside the roadmap: provision Supabase + provider keys,
 > set `AUTH_ENABLED`, and deploy per `docs/DEPLOYMENT.md`.
 
@@ -425,16 +464,20 @@ enhancements noted at the review sign-off:
       "validation": ["backend pytest 70 passed", "frontend build exit 0, lint 0, vitest 14/14"] },
     { "id": "cp-0014-post-review-hardening", "title": "Applied the full-system lead-engineer review (verdict SHIP)", "status": "complete", "parent": "cp-0013-center-panels",
       "delivered": ["SECURITY HIGH fixed: path-traversal on GET /api/workflows/runs/{workflow_id} (WorkflowStore._path rejects '/','\\',NUL,'..')", "SECURITY MEDIUM (defense-in-depth): same jail on CheckpointStore", "BACKEND: deduped RAG memory on resume via stable id mem:{workflow_id}:{agent_id}", "CONCURRENCY: threading.RLock on VectorStore + ProjectStore read-modify-write", "DOCS: README/DEPLOYMENT test counts 55->70; removed auditor scratch file backend/_audit_recursion.py"],
-      "validation": ["backend pytest 70 passed", "frontend build exit 0, lint 0, vitest 14/14"] }
+      "validation": ["backend pytest 70 passed", "frontend build exit 0, lint 0, vitest 14/14"] },
+    { "id": "cp-0015-per-project-workspaces", "title": "Per-project workspace partition + cascade hard-delete + project switcher", "status": "complete", "parent": "cp-0014-post-review-hardening",
+      "delivered": ["partitioned the workspace per project: workspace/projects/<project_id>/ isolates artifacts (docs/frontend/backend/presentations/reports) + RAG memory/knowledge (.state/vectors) + workflow runs (.state/workflows) + checkpoints (.checkpoints); GLOBAL = the project catalog (.state/projects.json + tasks.json) + the build-checkpoint lineage (.state/checkpoints)", "new backend/app/workspace_fs/paths.py (DEFAULT_PROJECT='__default__', path-jailed safe_project_id, project_root, list_project_dir_ids, purge_project_workspace, reset_caches, one-time migrate_flat_workspace)", "store singletons -> @lru_cache project-keyed factories (get_artifact/memory/knowledge_service + get_workflow_store(project_id)); workflow_store.find_run/find_by_approval scan all projects", "orchestrator threads the project through run + resume; RunResult.projectId; resume persists back to the owning project", "X-Project-Id header resolved by get_project_id (app/api/deps.py path-jails AND 404s unknown/deleted projects); scoped routes workspace/memory/knowledge/workflows/media; /workflows/run uses the header only (body projectId override removed; RunRequest no longer has project_id)", "seeded never-deletable Default Workspace (__default__); deleting any other project HARD-DELETES its subtree (project_store.delete_project -> purge_project_workspace) with a UI confirm", "one-time startup migration migrate_flat_workspace into projects/__default__/ (idempotent via .state/.migrated_v2_projects; verified end-to-end)", "frontend: active-project zustand store (persisted) + axios X-Project-Id interceptor + project-scoped React Query keys + topbar ProjectSwitcher (switch/inline create/two-step delete-confirm); Tasks board scoped to the active project; useProjects.deleteProject falls back to Default", ".gitignore extended to workspace/projects/ + .state/.migrated_v2_projects", "two adversarial review rounds: 17 round-1 findings (actionable ones fixed); multi-tenant authorization findings consciously declined (single-admin offline OS); round 2 allClosed=true"],
+      "validation": ["backend pytest 95 passed (70 + test_project_isolation + test_workspace_paths)", "frontend build exit 0, lint 0, vitest 16/16 (+ project-switcher.test.tsx)"] }
   ],
   "forward_looking_followups": [
     "durable Postgres/Supabase LangGraph checkpointer for cross-restart resume of paused approvals (today an in-process MemorySaver; WorkflowStore persists run metadata either way)",
     "broaden store locking or move the JSON stores (VectorStore/ProjectStore/WorkflowStore) to Supabase if concurrency grows",
     "the recursion kill switch is correct + unit-tested but DORMANT in the current linear graph (recursion_count maxes at 1 because ceo runs once and no edge loops back) — re-enable its meaning by adding a replanning edge",
-    "prod-hardening checklist before any non-local deploy: override dev defaults (api_secret_key, admin creds), set AUTH_ENABLED=true, consider rate_limit_enabled (see docs/DEPLOYMENT.md)"
+    "prod-hardening checklist before any non-local deploy: override dev defaults (api_secret_key, admin creds), set AUTH_ENABLED=true, consider rate_limit_enabled (see docs/DEPLOYMENT.md)",
+    "map cp-0015 per-project isolation onto Supabase: carry the project_id partition onto a project_id column + Row-Level Security (RLS) so the per-project boundary holds at the DB. A per-user project-access model is explicitly OUT OF SCOPE for this single-admin offline OS (no per-user/per-project ownership by design) — only needed if multi-user is ever introduced"
   ],
-  "last_checkpoint": "cp-0014-post-review-hardening",
-  "validation": { "backend_pytest": "70 passed", "frontend": "build exit 0, lint 0 (--max-warnings 0), vitest 14/14" },
+  "last_checkpoint": "cp-0015-per-project-workspaces",
+  "validation": { "backend_pytest": "95 passed", "frontend": "build exit 0, lint 0 (--max-warnings 0), vitest 16/16" },
   "project_status": "complete"
 }
 ```

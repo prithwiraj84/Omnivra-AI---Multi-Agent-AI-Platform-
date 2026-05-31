@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 SEEDED_PROJECT_IDS = {"proj-dashboard", "proj-instagram", "proj-pitch"}
+# The always-present Default Workspace (holds unfiled runs + migrated artifacts).
+DEFAULT_PROJECT_ID = "__default__"
 
 
 def test_list_projects_returns_seed_with_camelcase_task_count(client: Any) -> None:
@@ -18,10 +20,13 @@ def test_list_projects_returns_seed_with_camelcase_task_count(client: Any) -> No
     assert res.status_code == 200
     projects = res.json()
     assert isinstance(projects, list)
-    assert len(projects) == 3
+    # 3 demo projects + the Default Workspace bucket (>= because other tests in the
+    # session may create projects against the shared store).
+    assert len(projects) >= 4
 
     by_id = {p["id"]: p for p in projects}
     assert SEEDED_PROJECT_IDS.issubset(by_id)
+    assert DEFAULT_PROJECT_ID in by_id, "the Default Workspace must always exist"
     for proj in projects:
         # camelCase on the wire (not snake_case task_count)
         assert "taskCount" in proj

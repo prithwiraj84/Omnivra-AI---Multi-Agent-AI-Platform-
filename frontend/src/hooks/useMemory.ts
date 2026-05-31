@@ -10,30 +10,34 @@
 import { useQuery } from '@tanstack/react-query'
 import { memoryStats, recentMemory, searchMemory } from '@/lib/api/knowledge'
 import type { MemoryEntry, SearchHit, StoreStats } from '@/lib/api/types'
+import { useProjectStore } from '@/store/project'
 
-/** The most recent memory items (newest first). */
+/** The most recent memory items (newest first), scoped to the active project. */
 export function useRecentMemory(n = 12) {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<MemoryEntry[]>({
-    queryKey: ['memory', 'recent', n],
+    queryKey: ['memory', 'recent', projectId, n],
     queryFn: () => recentMemory(n),
     retry: 1,
   })
 }
 
-/** Memory search; disabled until the query is at least two characters long. */
+/** Memory search; disabled until the query is at least two characters long (per project). */
 export function useMemorySearch(query: string) {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<SearchHit[]>({
-    queryKey: ['memory', 'search', query],
+    queryKey: ['memory', 'search', projectId, query],
     queryFn: () => searchMemory(query),
     enabled: query.length > 1,
     retry: 1,
   })
 }
 
-/** Memory store item count — one retry so an offline host settles quickly. */
+/** Memory store item count for the active project. */
 export function useMemoryStats() {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<StoreStats>({
-    queryKey: ['memory', 'stats'],
+    queryKey: ['memory', 'stats', projectId],
     queryFn: memoryStats,
     retry: 1,
   })

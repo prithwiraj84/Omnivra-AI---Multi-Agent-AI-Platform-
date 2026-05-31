@@ -11,11 +11,12 @@ import type { WorkflowItem } from '@/types'
 export type ApprovalAction = 'approve' | 'reject' | 'retry' | 'rollback'
 
 /**
- * Kick off a workflow run. POST /workflows/run. If the task is gated, the returned
- * RunResult has status 'awaiting_approval' and a non-null `pendingApproval`.
+ * Kick off a workflow run. POST /workflows/run. Runs in the active project (sent as
+ * the X-Project-Id header by the axios interceptor). If the task is gated, the
+ * returned RunResult has status 'awaiting_approval' and a non-null `pendingApproval`.
  */
-export async function runWorkflow(task: string, projectId?: string): Promise<RunResult> {
-  const { data } = await api.post<RunResult>('/workflows/run', { task, projectId })
+export async function runWorkflow(task: string): Promise<RunResult> {
+  const { data } = await api.post<RunResult>('/workflows/run', { task })
   return data
 }
 

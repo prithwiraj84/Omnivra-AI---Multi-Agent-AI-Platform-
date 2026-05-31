@@ -7,11 +7,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { decideApproval, listAwaitingRuns, type ApprovalAction } from '@/lib/api/workflows'
 import type { RunResult } from '@/lib/api/types'
+import { useProjectStore } from '@/store/project'
 
-/** Live awaiting runs — polled every 8s; one retry so an offline host settles quickly. */
+/** Live awaiting runs — polled every 8s; scoped to the active project. */
 export function useAwaitingApprovals() {
+  const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<RunResult[]>({
-    queryKey: ['approvals', 'awaiting'],
+    queryKey: ['approvals', 'awaiting', projectId],
     queryFn: listAwaitingRuns,
     refetchInterval: 8000,
     retry: 1,

@@ -66,11 +66,15 @@ workspace/backend/
 workspace/presentations/
 workspace/reports/
 workspace/docs/*/
+# Per-project runtime trees (cp-0015): workspace/projects/<id>/ holds each project's
+# artifacts, RAG memory, knowledge, run records + checkpoints — all regenerable runtime.
+workspace/projects/
 workspace/.state/checkpoints/
 workspace/.state/artifacts/
 workspace/.state/vectors/
 workspace/.state/workflows/
 workspace/.state/*.json
+workspace/.state/.migrated_v2_projects
 workspace/**/*.log
 # Keep the directory skeleton + READMEs so the tree exists on clone.
 !workspace/

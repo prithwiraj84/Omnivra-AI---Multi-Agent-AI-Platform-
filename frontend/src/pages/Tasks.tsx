@@ -22,6 +22,7 @@ import { Stagger, StaggerItem } from '@/components/common/reveal'
 import { cn } from '@/lib/utils'
 import { useProjects } from '@/hooks/useProjects'
 import { useCreateTask, useDeleteTask, useTasks, useUpdateTask } from '@/hooks/useTasks'
+import { useProjectStore } from '@/store/project'
 import type { Accent } from '@/types'
 import type { Task } from '@/lib/api/types'
 
@@ -171,8 +172,10 @@ function Column({ column, tasks, onMove, onDelete, busyId }: {
 export function Tasks() {
   const [title, setTitle] = useState('')
   const [projectId, setProjectId] = useState('')
+  const activeProjectId = useProjectStore((s) => s.activeProjectId)
 
-  const { data: tasks } = useTasks()
+  // The board scopes to the active project (switching projects refetches via the key).
+  const { data: tasks } = useTasks(activeProjectId)
   const { data: projects } = useProjects()
   const create = useCreateTask()
   const update = useUpdateTask()
@@ -186,7 +189,8 @@ export function Tasks() {
     const trimmed = title.trim()
     if (!trimmed || create.isPending) return
     create.mutate(
-      { title: trimmed, projectId: projectId || undefined },
+      // Default to the active project so the new task lands on the scoped board.
+      { title: trimmed, projectId: projectId || activeProjectId },
       { onSuccess: () => setTitle('') },
     )
   }

@@ -20,6 +20,7 @@ from typing import Any
 from app.core.logging import logger
 from app.providers.registry import get_provider_registry
 from app.services.artifacts import get_artifact_service
+from app.workspace_fs.paths import DEFAULT_PROJECT
 
 # All media artifacts live under reports/media so they surface in the Workspace view.
 _MEDIA_DIR = "reports/media"
@@ -29,13 +30,13 @@ _AGENT_ID = "reel-automation"
 class MediaService:
     """Generate (or stub) media artifacts inside the workspace sandbox."""
 
-    async def generate_image(self, prompt: str) -> dict[str, Any]:
+    async def generate_image(self, prompt: str, project_id: str = DEFAULT_PROJECT) -> dict[str, Any]:
         """Generate a PNG from ``prompt`` via Hugging Face, or write a stub placeholder.
 
         Returns ``{"path", "stub", "note"}``. Never raises to the caller: any
         provider/IO failure falls back to a placeholder artifact + ``stub=True``.
         """
-        fm = get_artifact_service().fm
+        fm = get_artifact_service(project_id).fm
         provider = get_provider_registry().get("huggingface")
 
         if getattr(provider, "is_configured", False):
@@ -85,9 +86,9 @@ class MediaService:
             ),
         }
 
-    async def synthesize(self, text: str) -> dict[str, Any]:
+    async def synthesize(self, text: str, project_id: str = DEFAULT_PROJECT) -> dict[str, Any]:
         """Synthesize speech from ``text`` (TTS). Stubs when the Groq key is unset."""
-        fm = get_artifact_service().fm
+        fm = get_artifact_service(project_id).fm
         rel = self._write_placeholder(
             fm,
             suffix="txt",

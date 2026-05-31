@@ -11,9 +11,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.config import get_settings
 from app.core.logging import logger
 from app.schemas.orchestration import RunResult
+from app.workspace_fs.paths import DEFAULT_PROJECT, list_project_dir_ids, project_root
 
 
 class WorkflowStore:
@@ -57,6 +57,29 @@ class WorkflowStore:
         return None
 
 
-@lru_cache(maxsize=1)
-def get_workflow_store() -> WorkflowStore:
-    return WorkflowStore(get_settings().workspace_path)
+@lru_cache(maxsize=None)
+def get_workflow_store(project_id: str = DEFAULT_PROJECT) -> WorkflowStore:
+    """Per-project workflow run store (workspace/projects/<project_id>/.state/workflows/)."""
+    return WorkflowStore(project_root(project_id))
+
+
+def find_run(workflow_id: str) -> tuple[str, RunResult] | None:
+    """Locate a run across all projects by id. Returns (project_id, run) or None.
+
+    Resume/approval flows only carry a workflow_id/approval_id, not the project, so
+    we scan every project's store. Cheap for an offline single-admin OS.
+    """
+    for pid in list_project_dir_ids():
+        run = get_workflow_store(pid).get(workflow_id)
+        if run is not None:
+            return pid, run
+    return None
+
+
+def find_by_approval(approval_id: str) -> tuple[str, RunResult] | None:
+    """Locate the run awaiting a given approval_id across all projects."""
+    for pid in list_project_dir_ids():
+        run = get_workflow_store(pid).find_by_approval(approval_id)
+        if run is not None:
+            return pid, run
+    return None

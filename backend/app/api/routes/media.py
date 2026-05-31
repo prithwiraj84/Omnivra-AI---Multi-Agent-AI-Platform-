@@ -6,8 +6,9 @@ so the Workspace view always has something to show.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.deps import get_project_id
 from app.schemas import (
     ImageRequest,
     MediaResult,
@@ -21,15 +22,15 @@ router = APIRouter(tags=["media"])
 
 
 @router.post("/image", response_model=MediaResult)
-async def generate_image(req: ImageRequest) -> MediaResult:
-    """Generate an image from a prompt (or a stub placeholder artifact)."""
-    return MediaResult(**await get_media_service().generate_image(req.prompt))
+async def generate_image(req: ImageRequest, project_id: str = Depends(get_project_id)) -> MediaResult:
+    """Generate an image from a prompt (or a stub placeholder artifact) in the active project."""
+    return MediaResult(**await get_media_service().generate_image(req.prompt, project_id))
 
 
 @router.post("/tts", response_model=MediaResult)
-async def text_to_speech(req: TTSRequest) -> MediaResult:
-    """Synthesize speech from text (or a stub placeholder artifact)."""
-    return MediaResult(**await get_media_service().synthesize(req.text))
+async def text_to_speech(req: TTSRequest, project_id: str = Depends(get_project_id)) -> MediaResult:
+    """Synthesize speech from text (or a stub placeholder artifact) in the active project."""
+    return MediaResult(**await get_media_service().synthesize(req.text, project_id))
 
 
 @router.post("/stt", response_model=TranscriptionResult)

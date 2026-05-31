@@ -617,12 +617,12 @@
 
 ## Post-1.0 — feature/component parity + review hardening (DONE)
 
-> Additive over the 10-phase 1.0 (`cp-0010-phase10-polish`). Four approval-free post-1.0 checkpoints
-> (`cp-0011..cp-0014`, see `docs/CHECKPOINTS.md`) brought the product to full feature/component parity
-> and applied a lead-engineer review. These are tagged `phase = post-1.0` and `cp` = the originating
-> checkpoint. Current validation across the post-1.0 work: backend `pytest` **70 passed**; frontend
-> `vite build` exit 0 + `eslint --max-warnings 0` exit 0 + vitest **14/14**. All files below were
-> enumerated from the live source tree.
+> Additive over the 10-phase 1.0 (`cp-0010-phase10-polish`). Five approval-free post-1.0 checkpoints
+> (`cp-0011..cp-0015`, see `docs/CHECKPOINTS.md`) brought the product to full feature/component parity,
+> applied a lead-engineer review, and partitioned the workspace per project. These are tagged
+> `phase = post-1.0` and `cp` = the originating checkpoint. Current validation across the post-1.0 work:
+> backend `pytest` **95 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0` exit 0 +
+> vitest **16/16**. All files below were enumerated from the live source tree.
 
 ### cp-0011 — Remaining nav pages + Agent Hierarchy Tree (`frontend/src/` + `backend/`)
 | Path | Owner | Tree | cp | Status |
@@ -691,6 +691,31 @@
 | `docs/{PROJECT_STATE,FILE_MANIFEST,CHECKPOINTS,ROADMAP}.md` (reconciled current through cp-0014) | ceo / docs | source | cp-0014 | DONE |
 | `backend/_audit_recursion.py` (auditor scratch file) | qa | source | cp-0014 | REMOVED |
 
+### cp-0015 — Per-project workspace partition + cascade hard-delete + project switcher (`backend/` + `frontend/src/`)
+| Path | Owner | Tree | cp | Status |
+|---|---|---|---|---|
+| `backend/app/workspace_fs/paths.py` (NEW — per-project layout: `DEFAULT_PROJECT="__default__"`, path-jailed `safe_project_id`, `project_root`, `list_project_dir_ids`, `purge_project_workspace`, `reset_caches`, one-time `migrate_flat_workspace`) | backend-eng | source | cp-0015 | DONE |
+| `backend/app/services/{artifacts,memory,knowledge,workflow_store}.py` (edited — store singletons → `@lru_cache` project-keyed factories `get_*_service`/`get_workflow_store(project_id=DEFAULT_PROJECT)`; `workflow_store` gained module-level `find_run`/`find_by_approval` that scan all projects) | backend-eng | source | cp-0015 | DONE |
+| `backend/app/services/orchestrator.py` (edited — threads the project through run + resume; `RunResult` carries `projectId`; resume persists artifacts/memory back to the OWNING project) | backend-eng | source | cp-0015 | DONE |
+| `backend/app/services/project_store.py` (edited — `delete_project` → `purge_project_workspace` cascade hard-delete; seeds the never-deletable Default Workspace `__default__`) | backend-eng | source | cp-0015 | DONE |
+| `backend/app/api/deps.py` (edited — new `get_project_id`: reads `X-Project-Id` header / `?projectId=`, path-jails it, AND rejects unknown/deleted projects with 404) | api-eng | source | cp-0015 | DONE |
+| `backend/app/api/routes/{workspace,memory,knowledge,workflows,media}.py` (edited — scope via `get_project_id`; `/workflows/run` uses ONLY the header — the body `projectId` override was removed) | api-eng | source | cp-0015 | DONE |
+| `backend/app/schemas/orchestration.py` (edited — `RunResult.projectId`; `RunRequest` no longer has `project_id`) | api-eng | source | cp-0015 | DONE |
+| `backend/app/graph/nodes/delegate.py` (edited — project-scoped memory recall) | backend-eng | source | cp-0015 | DONE |
+| `backend/app/main.py` (edited — runs `migrate_flat_workspace` once on startup, idempotent via `.state/.migrated_v2_projects`) | backend-eng | source | cp-0015 | DONE |
+| `backend/tests/test_project_isolation.py` (NEW — per-project isolation + cascade hard-delete + unknown-project-404 + default-not-deletable + path-jail) | qa | source | cp-0015 | DONE |
+| `backend/tests/test_workspace_paths.py` (NEW — `safe_project_id`, purge jail, `_merge_move`, migration with real data + idempotence + fresh-install no-op) | qa | source | cp-0015 | DONE |
+| `frontend/src/store/project.ts` (NEW — active-project zustand store, persisted to localStorage) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/lib/api/client.ts` (edited — axios interceptor sends `X-Project-Id` on every request) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/hooks/{useArtifacts,useMemory,useKnowledge,useWorkflowRuns,useApprovals}.ts` (edited — project-scoped React Query keys) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/hooks/useProjects.ts` (edited — `deleteProject` falls back to Default when the active project is deleted) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/components/layout/project-switcher.tsx` (NEW — topbar `ProjectSwitcher`: switch / inline create / two-step delete-confirm) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/pages/Tasks.tsx` (edited — Tasks board scoped to the active project) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/lib/api/types.ts` (edited — `RunResult` type gained `projectId`) | frontend-eng | source | cp-0015 | DONE |
+| `frontend/src/test/project-switcher.test.tsx` (NEW — switch / inline create / two-step delete-confirm) | qa | source | cp-0015 | DONE |
+| `.gitignore` (edited — added `workspace/projects/` + `workspace/.state/.migrated_v2_projects`; per-project runtime trees are not tracked) | architect | source | cp-0015 | DONE |
+| `docs/{PROJECT_STATE,FILE_MANIFEST,CHECKPOINTS,ROADMAP}.md` (reconciled current through cp-0015) | ceo / docs | source | cp-0015 | DONE |
+
 ### Orphan note (audit follow-up)
 | Path | Owner | Tree | cp | Status |
 |---|---|---|---|---|
@@ -698,12 +723,14 @@
 
 ---
 
-> **MANIFEST CURRENT THROUGH cp-0014.** All 10 phases plus the post-1.0 build-out (`cp-0011..cp-0013`)
-> and the review-hardening pass (`cp-0014`) are on disk and validated; no rows remain `PENDING`. Every
-> sidebar route is a real page and the entire `DESIGN_SYSTEM.md` component inventory is realized. The
-> former `Placeholder.tsx` orphan was deleted in cp-0014, so no unused source files remain.
-> Current validation: backend `pytest` **70 passed**; frontend `vite build` exit 0 +
-> `eslint --max-warnings 0` exit 0 + vitest **14/14**.
+> **MANIFEST CURRENT THROUGH cp-0015.** All 10 phases plus the post-1.0 build-out (`cp-0011..cp-0013`),
+> the review-hardening pass (`cp-0014`), and the per-project workspace partition (`cp-0015`) are on disk
+> and validated; no rows remain `PENDING`. Every sidebar route is a real page and the entire
+> `DESIGN_SYSTEM.md` component inventory is realized. The former `Placeholder.tsx` orphan was deleted in
+> cp-0014, so no unused source files remain. The per-project runtime trees under `workspace/projects/`
+> (and the `.state/.migrated_v2_projects` marker) are git-ignored, not manifest-tracked.
+> Current validation: backend `pytest` **95 passed**; frontend `vite build` exit 0 +
+> `eslint --max-warnings 0` exit 0 + vitest **16/16**.
 
 ---
 

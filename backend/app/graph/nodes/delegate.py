@@ -16,6 +16,7 @@ from app.graph.state import AgentOutput, OmnivraState, WorkflowStatus
 from app.providers.registry import ProviderRegistry
 from app.services.memory import get_memory_service
 from app.services.realtime import emit
+from app.workspace_fs.paths import DEFAULT_PROJECT
 
 DelegateNode = Callable[[OmnivraState], Awaitable[OmnivraState]]
 
@@ -48,8 +49,8 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
         # Seed context with whatever the CEO already produced.
         prior: list[AgentOutput] = list(state.get("agent_outputs", []))
 
-        # RAG: recall relevant memory from earlier work and thread it into prompts.
-        memory_block = get_memory_service().recall_context(task, k=3)
+        # RAG: recall relevant memory from THIS project's earlier work (isolated per project).
+        memory_block = get_memory_service(state.get("project_id") or DEFAULT_PROJECT).recall_context(task, k=3)
 
         for agent_id in plan:
             base = _build_context(prior + outputs)

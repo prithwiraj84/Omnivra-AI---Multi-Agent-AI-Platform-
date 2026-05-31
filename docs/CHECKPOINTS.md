@@ -39,14 +39,16 @@
 | 12 | `cp-0012-projects-tasks` | `bootstrap` | `post1.projects_tasks` | post-1.0 | committed | 0/3 | 2026-05-30T00:00:00Z |
 | 13 | `cp-0013-center-panels` | `bootstrap` | `post1.center_panels` | post-1.0 | committed | 0/3 | 2026-05-31T00:00:00Z |
 | 14 | `cp-0014-post-review-hardening` | `bootstrap` | `post1.review_hardening` | post-1.0 | committed | 0/3 | 2026-05-31T00:00:00Z |
+| 15 | `cp-0015-per-project-workspaces` | `bootstrap` | `post1.per_project_workspaces` | post-1.0 | committed | 0/3 | 2026-05-31T00:00:00Z |
 
-> **PROJECT COMPLETE — all 10 phases shipped, plus a post-1.0 build-out and a review-hardening pass.**
-> `cp-0014-post-review-hardening` is the latest, committed checkpoint. After 1.0 (`cp-0010`), four
-> additive, approval-free post-1.0 checkpoints (`cp-0011..cp-0014`) brought the product to full
-> feature/component parity (every sidebar route is a real page; the entire `DESIGN_SYSTEM.md` component
-> inventory is realized) and applied a full-system lead-engineer review (verdict SHIP). Current
-> validation: backend `pytest` **70 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0`
-> exit 0 + vitest **14/14**.
+> **PROJECT COMPLETE — all 10 phases shipped, plus a post-1.0 build-out, a review-hardening pass, and
+> per-project workspace isolation.** `cp-0015-per-project-workspaces` is the latest, committed
+> checkpoint. After 1.0 (`cp-0010`), five additive, approval-free post-1.0 checkpoints
+> (`cp-0011..cp-0015`) brought the product to full feature/component parity (every sidebar route is a
+> real page; the entire `DESIGN_SYSTEM.md` component inventory is realized), applied a full-system
+> lead-engineer review (verdict SHIP), and partitioned the workspace per project. Current validation:
+> backend `pytest` **95 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0` exit 0 +
+> vitest **16/16**.
 
 **Status legend:** `pending` (in flight) · `committed` (safe resume point) · `failed` ·
 `superseded` · `rolled_back`.
@@ -654,6 +656,49 @@ Each committed checkpoint has a JSON record below. Fields:
 ```
 <!-- END omnivra-checkpoint cp-0014-post-review-hardening -->
 
+<!-- BEGIN omnivra-checkpoint cp-0015-per-project-workspaces -->
+```json omnivra-checkpoint
+{
+  "schema_version": "1.0.0",
+  "id": "cp-0015-per-project-workspaces",
+  "workflow_id": "bootstrap",
+  "node": "post1.per_project_workspaces",
+  "status": "committed",
+  "recursion_count": 0,
+  "recursion_limit": 3,
+  "phase": "post-1.0",
+  "phase_title": "Per-project workspace partition + cascade hard-delete + project switcher",
+  "covers": {
+    "summary": "Partitioned the workspace per project so multiple projects no longer mix. Each project owns an isolated subtree workspace/projects/<project_id>/ with its own artifacts (docs/frontend/backend/presentations/reports), RAG memory + knowledge base (.state/vectors), workflow run records (.state/workflows) and checkpoints (.checkpoints). GLOBAL bits stay shared: the project catalog (.state/projects.json + tasks.json) and the build-checkpoint lineage (.state/checkpoints). New workspace_fs/paths.py owns the layout, the path-jailed safe_project_id (per-project arm of the WORKSPACE RULE), purge_project_workspace + cache eviction, and a one-time migrate_flat_workspace that moves the old flat layout into a __default__ Default Workspace project (always present, never deletable). Store singletons became @lru_cache project-keyed factories (get_artifact_service/get_memory_service/get_knowledge_service/get_workflow_store(project_id)); workflow_store also gained module-level find_run/find_by_approval that scan all projects (resume/approval only know an id, not the project). The orchestrator threads the project through run + resume (resume/approval locate the run across projects and persist back to the owning project; RunResult carries projectId). Routes scope via an X-Project-Id header resolved by get_project_id, which path-jails AND rejects unknown/deleted projects with 404; /workflows/run uses ONLY the header (the body projectId override was removed; RunRequest no longer has project_id). Deleting a project HARD-DELETES its whole subtree (project_store.delete_project -> purge_project_workspace) with a UI confirm. Frontend: active-project zustand store (persisted to localStorage) + axios interceptor sending X-Project-Id + project-scoped React Query keys + a topbar ProjectSwitcher (switch / inline create / two-step delete-confirm); Tasks board + approvals scoped to the active project; useProjects.deleteProject falls back to Default. .gitignore extended to workspace/projects/ + .state/.migrated_v2_projects.",
+    "review": "Two adversarial review rounds (7-dimension fan-out, then a focused fix-verification). Round 1 found 17 findings; the actionable ones were fixed (header is the single source of truth for /run; get_project_id validates project existence -> 404, closing skeleton-dir 'resurrection'; Tasks/approvals scoping; migration made testable + verified on real data; .gitignore extended to workspace/projects/). Multi-tenant authorization findings were consciously declined (single-admin offline OS, no per-user/per-project ownership by design). Round 2 confirmed allClosed=true: both CRITICALs resolved, no regressions.",
+    "validation": {
+      "backend_tests": "95 passed, 0 failed (70 prior + tests/test_project_isolation.py + tests/test_workspace_paths.py)",
+      "frontend_build": "exit 0",
+      "frontend_lint": "exit 0 (eslint --max-warnings 0)",
+      "frontend_tests": "16 passed, 0 failed (vitest — 14 prior + frontend/src/test/project-switcher.test.tsx)",
+      "migration": "verified end-to-end on the real workspace (flat artifacts + .state/vectors + .state/workflows moved into projects/__default__/, marker written, global state intact)"
+    },
+    "key_paths": [
+      "backend/app/workspace_fs/paths.py (layout, safe_project_id jail, migrate_flat_workspace, purge_project_workspace, reset_caches)",
+      "backend/app/services/{artifacts,memory,knowledge,workflow_store}.py (project-keyed factories) + workflow_store.find_run/find_by_approval",
+      "backend/app/services/orchestrator.py + project_store.py (cascade hard-delete + Default seed) + api/deps.py (get_project_id existence check)",
+      "backend/app/api/routes/{workspace,memory,knowledge,workflows,approvals,media,projects}.py + graph/nodes/delegate.py + main.py (migration on startup)",
+      "frontend/src/store/project.ts, lib/api/client.ts (X-Project-Id), hooks/{useArtifacts,useMemory,useKnowledge,useWorkflowRuns,useApprovals,useProjects,useTasks}.ts, components/layout/project-switcher.tsx, pages/Tasks.tsx",
+      "backend/tests/{test_project_isolation,test_workspace_paths}.py + frontend/src/test/project-switcher.test.tsx"
+    ]
+  },
+  "state_ref": "workspace/.state/checkpoints/cp-0015-per-project-workspaces.json",
+  "manifest_hash": "sha256:PENDING",
+  "parent": "cp-0014-post-review-hardening",
+  "supersedes": null,
+  "approval": { "required": false, "status": "shipped" },
+  "resume_hint": "Per-project isolation is complete + reviewed. Optional follow-ups (non-blocking): when moving to Supabase, map project_id to a column + RLS; if multi-process/multi-user is ever introduced, add a per-store lock or DB and (only then) a per-user project-access model — explicitly out of scope for this single-admin offline OS.",
+  "rollback_hint": "Additive over cp-0014. Rollback = revert paths.py + the factory project_id args + get_project_id existence check + the frontend project store/switcher; data under workspace/projects/ can be flattened back (it is runtime, gitignored).",
+  "created_at": "2026-05-31T00:00:00Z"
+}
+```
+<!-- END omnivra-checkpoint cp-0015-per-project-workspaces -->
+
 ---
 
 ## Resume Procedure (orchestrator / Recovery Agent)
@@ -679,9 +724,10 @@ Each committed checkpoint has a JSON record below. Fields:
 
 ---
 
-**PROJECT COMPLETE — all 10 phases shipped, plus a post-1.0 build-out and a review-hardening pass.**
-`cp-0014-post-review-hardening` is the latest, committed checkpoint (no approval pending); the post-1.0
-chain `cp-0011..cp-0014` is additive over the 1.0 release at `cp-0010-phase10-polish`. Current
-validation: backend `pytest` **70 passed**; frontend `vite build` exit 0 + `eslint --max-warnings 0`
-exit 0 + vitest **14/14**. Optional next: provision Supabase + provider keys, enable `AUTH_ENABLED`, and
-deploy per `docs/DEPLOYMENT.md` (forward-looking, non-blocking followups in `docs/ROADMAP.md`).
+**PROJECT COMPLETE — all 10 phases shipped, plus a post-1.0 build-out, a review-hardening pass, and
+per-project workspace isolation.** `cp-0015-per-project-workspaces` is the latest, committed checkpoint
+(no approval pending); the post-1.0 chain `cp-0011..cp-0015` is additive over the 1.0 release at
+`cp-0010-phase10-polish`. Current validation: backend `pytest` **95 passed**; frontend `vite build`
+exit 0 + `eslint --max-warnings 0` exit 0 + vitest **16/16**. Optional next: provision Supabase +
+provider keys, enable `AUTH_ENABLED`, and deploy per `docs/DEPLOYMENT.md` (forward-looking, non-blocking
+followups in `docs/ROADMAP.md`).
