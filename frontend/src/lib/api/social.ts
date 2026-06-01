@@ -36,6 +36,11 @@ export async function renderDraft(id: string): Promise<SocialDraft> {
   return data
 }
 
+/** Hard-delete a draft and all of its artifacts. DELETE /social/drafts/{id}. */
+export async function deleteDraft(id: string): Promise<void> {
+  await api.delete(`/social/drafts/${id}`)
+}
+
 /**
  * Direct URL for a workspace media artifact (rendered .mp4 / generated image), for a
  * native <video>/<img> src. Carries projectId as a query param because those elements

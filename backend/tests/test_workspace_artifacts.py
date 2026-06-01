@@ -21,7 +21,9 @@ def test_run_writes_and_serves_artifacts() -> None:
             json={"task": "Write the README and architecture documentation"},
         )
         assert resp.status_code == 200
-        body = resp.json()
+        # Fire-and-poll: the POST returns 'running'; read the terminal run (with its artifacts)
+        # back via GET /runs/{id} (the BackgroundTask has finished by then under TestClient).
+        body = c.get(f"/api/workflows/runs/{resp.json()['workflowId']}").json()
 
         # At least one agent output carries a workspace-relative .md artifact path.
         md_paths = [
@@ -69,3 +71,61 @@ def test_media_endpoint_blocks_traversal(payload: str) -> None:
     with TestClient(app) as c:
         resp = c.get(f"/api/workspace/media/{payload}")
         assert resp.status_code in (400, 404), (payload, resp.status_code)
+
+
+# --- Guarded in-workspace runner (POST /api/workspace/run) ---
+def _write(rel: str, body: str) -> None:
+    from app.services.artifacts import get_artifact_service
+
+    get_artifact_service("__default__").fm.write_text(rel, body, agent_id="qa-engineer")
+
+
+def test_run_executes_a_workspace_python_file() -> None:
+    with TestClient(app) as c:
+        _write("reports/runtest/hello.py", "print('hello from omnivra')\n")
+        r = c.post("/api/workspace/run", json={"path": "reports/runtest/hello.py"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True, body
+        assert body["exitCode"] == 0
+        assert "hello from omnivra" in body["stdout"]
+        assert body["timedOut"] is False
+
+
+def test_run_reports_a_nonzero_exit_without_500() -> None:
+    with TestClient(app) as c:
+        _write("reports/runtest/boom.py", "import sys\nprint('partial')\nsys.exit(3)\n")
+        body = c.post("/api/workspace/run", json={"path": "reports/runtest/boom.py"}).json()
+        assert body["ok"] is False
+        assert body["exitCode"] == 3
+        assert "partial" in body["stdout"]
+
+
+def test_run_refuses_unsupported_file_type() -> None:
+    with TestClient(app) as c:
+        _write("reports/runtest/notes.md", "# not runnable\n")
+        body = c.post("/api/workspace/run", json={"path": "reports/runtest/notes.md"}).json()
+        assert body["ok"] is False
+        assert "Cannot run" in body["note"]
+
+
+@pytest.mark.parametrize("path", ["../../../etc/passwd", "..\\..\\secret.py", "reports/../../../escape.py"])
+def test_run_blocks_path_traversal(path: str) -> None:
+    # An escape attempt must never run anything outside the sandbox — returns ok=False, no 500.
+    with TestClient(app) as c:
+        r = c.post("/api/workspace/run", json={"path": path})
+        assert r.status_code == 200
+        assert r.json()["ok"] is False
+
+
+def test_run_enforces_the_timeout(monkeypatch) -> None:
+    # A long-running file is killed at the wall-clock cap and reported as timed out (never hangs).
+    import app.services.code_runner as cr
+
+    monkeypatch.setattr(cr, "_TIMEOUT_SEC", 1.5)
+    with TestClient(app) as c:
+        _write("reports/runtest/slow.py", "import time\nprint('start', flush=True)\ntime.sleep(30)\n")
+        body = c.post("/api/workspace/run", json={"path": "reports/runtest/slow.py"}).json()
+        assert body["timedOut"] is True
+        assert body["ok"] is False
+        assert "time limit" in body["note"]

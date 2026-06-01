@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
  * The dot's color comes from `currentColor` (the `.status-dot` class sets both
  * background and glow to it), so we drive the hue with a literal `text-*` class.
  */
-export type DotStatus = 'online' | 'offline' | 'busy' | 'idle'
+export type DotStatus = 'online' | 'offline' | 'busy' | 'idle' | 'working' | 'needs_approval'
 
 export interface StatusDotProps extends React.HTMLAttributes<HTMLSpanElement> {
   status?: DotStatus
@@ -19,6 +19,8 @@ export interface StatusDotProps extends React.HTMLAttributes<HTMLSpanElement> {
 // Literal color classes so Tailwind's scanner emits them.
 const statusColor: Record<DotStatus, string> = {
   online: 'text-omnivra-emerald',
+  working: 'text-omnivra-cyan',
+  needs_approval: 'text-omnivra-amber',
   busy: 'text-omnivra-amber',
   offline: 'text-omnivra-red',
   idle: 'text-zinc-500',

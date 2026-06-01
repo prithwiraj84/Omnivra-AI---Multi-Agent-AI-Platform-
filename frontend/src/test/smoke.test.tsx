@@ -81,9 +81,10 @@ describe('App shell', () => {
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0)
     }
-    // Known mock values prove data wiring, not just headers.
+    // Live dashboard: the stat labels render (values are "—" until the backend responds),
+    // and offline (jsdom) the empty panels show their empty states — no fake demo data.
     expect(screen.getAllByText(/Success Rate/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/AI Company OS Dashboard/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/No active workflows yet/i)).toBeTruthy()
   })
 
   it('renders the workspace artifact explorer on /workspace', () => {
@@ -143,11 +144,39 @@ describe('App shell', () => {
     expect(screen.getByText(/No drafts yet/i)).toBeTruthy()
   })
 
+  it('renders the Document Studio on /document-studio', () => {
+    // Document drafts fail offline (jsdom) — the studio must still mount and show its
+    // composer (the sidebar nav also labels it, hence getAllByText) + empty state.
+    renderApp('/document-studio')
+    expect(screen.getAllByText(/Document Studio/i).length).toBeGreaterThan(0)
+    expect(screen.getByLabelText(/Document prompt/i)).toBeTruthy()
+    expect(screen.getByText(/No documents yet/i)).toBeTruthy()
+  })
+
   it('renders the run-task control in the greeting hero', () => {
     // RunTask dispatches a task to the CEO agent. Offline (jsdom), the run/awaiting
     // queries simply never resolve — the control must still render without crashing.
     renderApp('/')
     expect(screen.getByRole('button', { name: /Assign to CEO/i })).toBeTruthy()
     expect(screen.getByLabelText(/Task to assign to the CEO agent/i)).toBeTruthy()
+  })
+
+  // Every primary route must MOUNT without throwing, even offline (queries fail -> empty
+  // states). The persistent topbar search proves the page rendered inside the chrome rather
+  // than crashing. These cover the pages reported as "not working".
+  it.each([
+    ['/workflows'],
+    ['/approvals'],
+    ['/documents'],
+    ['/departments/marketing'],
+    ['/departments/system-ops'],
+    ['/departments/quality'],
+    ['/departments/documentation'],
+    ['/departments/executive'],
+    ['/integrations'],
+    ['/billing'],
+  ])('mounts %s without crashing', (route) => {
+    renderApp(route)
+    expect(screen.getByPlaceholderText(/Search anything/i)).toBeTruthy()
   })
 })

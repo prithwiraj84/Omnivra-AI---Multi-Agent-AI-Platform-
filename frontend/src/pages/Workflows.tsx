@@ -23,8 +23,10 @@ function shortId(id: string): string {
 
 /** Run status → NeonBadge tone + human label. */
 const STATUS_META: Record<RunStatus, { tone: BadgeTone; label: string }> = {
+  running: { tone: 'info', label: 'running' },
   completed: { tone: 'success', label: 'completed' },
   failed: { tone: 'danger', label: 'failed' },
+  stopped: { tone: 'danger', label: 'stopped' },
   awaiting_approval: { tone: 'warning', label: 'awaiting approval' },
   rolled_back: { tone: 'info', label: 'rolled back' },
 }
@@ -66,7 +68,9 @@ function RunRow({
   expanded: boolean
   onToggle: () => void
 }) {
-  const meta = STATUS_META[run.status]
+  // Fallback for any status the backend emits but the type map doesn't enumerate (free-form
+  // RunResult.status on the wire) — never let an unknown status crash the run-history list.
+  const meta = STATUS_META[run.status] ?? { tone: 'info' as BadgeTone, label: run.status }
   const artifacts = artifactPaths(run.result)
 
   return (

@@ -23,7 +23,7 @@ def test_ceo_is_gemini() -> None:
     assert isinstance(ceo, AgentSpec)
     assert ceo.department is Department.EXECUTIVE
     assert ceo.provider == "google_ai"
-    assert ceo.model == "gemini-2.5-flash"
+    assert ceo.model == "gemini-3.1-flash-lite"
 
 
 def test_every_agent_has_a_known_provider_and_model() -> None:

@@ -1,13 +1,13 @@
 """Workflow routes: list the active workflow items and run the orchestrator."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app import schemas
 from app.api.deps import get_project_id, get_repo, require_user
 from app.db.repositories import DashboardRepository
 from app.schemas import RunRequest, RunResult
-from app.services.orchestrator import run_workflow
+from app.services.orchestrator import begin_run, run_workflow
 from app.services.workflow_store import get_workflow_store
 
 router = APIRouter(tags=["workflows"])
@@ -20,13 +20,22 @@ def list_workflows(repo: DashboardRepository = Depends(get_repo)) -> list[schema
 
 
 @router.post("/run", response_model=RunResult)
-async def run(req: RunRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> RunResult:
-    """Run the CEO->department orchestration graph for one task in the active project.
+def run(
+    req: RunRequest,
+    background_tasks: BackgroundTasks,
+    project_id: str = Depends(get_project_id),
+    _user: str = Depends(require_user),
+) -> RunResult:
+    """Kick off the CEO->department orchestration for one task; returns IMMEDIATELY.
 
-    The target project is the active one (X-Project-Id header / ?projectId=), validated
-    to exist by get_project_id — never an arbitrary body value.
+    A real multi-agent run takes many seconds (well past the UI request timeout), so we persist
+    a 'running' record and run the graph in a BackgroundTask. The response carries the workflow id
+    + status 'running'; the client polls GET /workflows/runs/{id} (and watches /ws) until terminal.
+    The project is the active one (X-Project-Id / ?projectId=), validated by get_project_id.
     """
-    return await run_workflow(req.task, project_id)
+    pending = begin_run(req.task, project_id)
+    background_tasks.add_task(run_workflow, req.task, project_id, pending.workflow_id)
+    return pending
 
 
 @router.get("/runs", response_model=list[RunResult])

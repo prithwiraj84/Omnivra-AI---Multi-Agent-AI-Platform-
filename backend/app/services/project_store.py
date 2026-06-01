@@ -136,8 +136,20 @@ class ProjectStore:
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         return next((t for t in self._tasks if t["id"] == task_id), None)
 
-    def create_task(self, title: str, *, project_id: str | None = None, priority: str = "medium", agent_id: str | None = None) -> dict[str, Any]:
-        task = {"id": "task-" + uuid4().hex[:8], "title": title, "project_id": project_id, "status": "todo", "priority": priority, "agent_id": agent_id, "created_at": _now()}
+    def find_task_by_workflow(self, workflow_id: str) -> dict[str, Any] | None:
+        """The task auto-created for a CEO run (linked by workflow_id), if any."""
+        return next((t for t in self._tasks if t.get("workflow_id") == workflow_id), None)
+
+    def create_task(
+        self, title: str, *, project_id: str | None = None, priority: str = "medium",
+        agent_id: str | None = None, status: str = "todo", workflow_id: str | None = None,
+    ) -> dict[str, Any]:
+        task: dict[str, Any] = {
+            "id": "task-" + uuid4().hex[:8], "title": title, "project_id": project_id,
+            "status": status, "priority": priority, "agent_id": agent_id, "created_at": _now(),
+        }
+        if workflow_id:  # link to a CEO workflow run so its status can track the run
+            task["workflow_id"] = workflow_id
         with self._lock:
             self._tasks.append(task)
             self._save_tasks()

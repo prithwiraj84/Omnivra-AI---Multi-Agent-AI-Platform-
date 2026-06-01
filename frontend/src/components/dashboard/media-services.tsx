@@ -16,13 +16,17 @@ export function MediaServices({ services }: MediaServicesProps) {
   return (
     <GlassCard className="space-y-4">
       <SectionHeader label="Media Services" />
-      <Stagger className="space-y-2.5">
-        {services.map((service) => (
-          <StaggerItem key={service.name}>
-            <MediaServiceCard service={service} />
-          </StaggerItem>
-        ))}
-      </Stagger>
+      {services.length === 0 ? (
+        <p className="py-8 text-center text-xs text-zinc-500">No media generated yet — image / TTS / STT usage appears here.</p>
+      ) : (
+        <Stagger className="space-y-2.5">
+          {services.map((service) => (
+            <StaggerItem key={service.name}>
+              <MediaServiceCard service={service} />
+            </StaggerItem>
+          ))}
+        </Stagger>
+      )}
     </GlassCard>
   )
 }

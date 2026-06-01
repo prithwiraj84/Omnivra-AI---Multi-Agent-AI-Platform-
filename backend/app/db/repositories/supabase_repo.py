@@ -42,6 +42,7 @@ class SupabaseRepository:
     def __init__(self, client: "Client") -> None:
         self._client = client
         self._seed = SeedRepository()
+        self._warned = False  # log the seed-fallback warning once, not every poll
 
     # --- agents (live) -----------------------------------------------------
     def list_agents(self) -> list[Agent]:
@@ -49,7 +50,11 @@ class SupabaseRepository:
         try:
             rows = self._fetch_agent_rows()
         except Exception as exc:  # noqa: BLE001 - never break the dashboard
-            logger.warning("Supabase list_agents failed, using seed: {}", exc)
+            if not self._warned:
+                logger.warning("Supabase list_agents failed, using seed (run supabase/schema.sql + seed.sql to enable live rows): {}", exc)
+                self._warned = True
+            else:
+                logger.debug("Supabase list_agents still failing, using seed: {}", exc)
             return self._seed.list_agents()
 
         if not rows:
@@ -93,30 +98,39 @@ class SupabaseRepository:
 
     # --- internals ---------------------------------------------------------
     def _fetch_agent_rows(self) -> list[dict[str, Any]]:
-        """Select agents joined to departments, providers and models."""
+        """Select agents joined to departments, providers and models.
+
+        Column names match supabase/schema.sql: agents(key, name, status, is_system),
+        providers(key = the provider_kind enum), models(model_id = the model string).
+        """
         response = (
             self._client.table("agents")
             .select(
-                "id, name, kind, status, model,"
+                "key, name, status, is_system, sort_order,"
                 " departments(name),"
-                " providers(provider_kind),"
-                " models(model_key)"
+                " providers(key),"
+                " models(model_id)"
             )
+            .order("sort_order")
             .execute()
         )
         return list(response.data or [])
 
     def _row_to_agent(self, row: dict[str, Any]) -> Agent:
-        """Map one joined DB row to a :class:`schemas.Agent` DTO."""
+        """Map one joined DB row (schema.sql shape) to a :class:`schemas.Agent` DTO."""
         department = _nested(row, "departments", "name") or ""
-        provider_kind = _nested(row, "providers", "provider_kind") or ""
+        provider_kind = _nested(row, "providers", "key") or ""
         provider = _PROVIDER_KIND_TO_KEY.get(provider_kind, provider_kind)
-
-        # Model string: prefer the joined model_key, fall back to the row column.
-        model = _nested(row, "models", "model_key") or row.get("model") or ""
+        model = _nested(row, "models", "model_id") or ""
+        # DB keys use underscores (ceo_manager); the registry/frontend use hyphens.
+        key = str(row.get("key", ""))
+        # is_system marks BOTH Media + System-Ops agents in the schema; distinguish by
+        # department so Media (Whisper/Orpheus/FLUX) shows in the agent grid — not under
+        # the "System Operations (LFM 1.2B)" row. Mirrors the registry's AgentKind.
+        kind = "media" if department == "Media" else ("system" if row.get("is_system") else "text")
 
         return Agent(
-            id=str(row.get("id", "")),
+            id=key.replace("_", "-"),
             name=str(row.get("name", "")),
             department=department,
             accent=DEPARTMENT_ACCENT.get(department, "cyan"),
@@ -124,7 +138,7 @@ class SupabaseRepository:
             provider_label=PROVIDER_LABEL.get(provider, provider),
             model=model,
             model_label=MODEL_LABEL.get(model, model),
-            kind=str(row.get("kind", "text")),
+            kind=kind,
             status=str(row.get("status", "online")),
         )
 

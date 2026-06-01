@@ -3,7 +3,7 @@ import { Cpu, Database, KeyRound, Plug, ShieldCheck, Sparkles, Zap } from 'lucid
 
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
-import { NeonBadge } from '@/components/ui/neon-badge'
+import { NeonBadge, type BadgeTone } from '@/components/ui/neon-badge'
 import { StatusDot } from '@/components/ui/status-dot'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Reveal, Stagger, StaggerItem } from '@/components/common/reveal'
@@ -18,6 +18,12 @@ interface StatusTile {
   icon: LucideIcon
   accent: Accent
   configured: boolean
+  // Optional copy for the NOT-configured state. Defaults to the neutral
+  // "Idle / Not configured"; used to present an intentional state (e.g. auth open
+  // mode) as valid rather than broken.
+  offLabel?: string
+  offTone?: BadgeTone
+  offDot?: string
 }
 
 /** Provider display metadata (order + icon + accent), keyed by ProviderKey. */
@@ -49,10 +55,10 @@ function StatusCard({ tile }: { tile: StatusTile }) {
         <StatusDot
           status={tile.configured ? 'online' : 'idle'}
           pulse={tile.configured}
-          label={tile.configured ? 'Online' : 'Idle'}
+          label={tile.configured ? 'Online' : (tile.offDot ?? 'Idle')}
         />
-        <NeonBadge tone={tile.configured ? 'success' : 'info'} dot>
-          {tile.configured ? 'Configured' : 'Not configured'}
+        <NeonBadge tone={tile.configured ? 'success' : (tile.offTone ?? 'info')} dot>
+          {tile.configured ? 'Configured' : (tile.offLabel ?? 'Not configured')}
         </NeonBadge>
       </div>
     </GlassCard>
@@ -93,10 +99,14 @@ export function Integrations() {
     {
       key: 'auth',
       name: 'Authentication',
-      detail: 'JWT bearer auth gate',
+      detail: 'JWT bearer auth gate (open in dev)',
       icon: ShieldCheck,
       accent: 'violet',
       configured: info?.authEnabled ?? false,
+      // Open mode is the intentional dev default — show it as a valid state, not "broken".
+      offLabel: 'Open (dev mode)',
+      offTone: 'warning',
+      offDot: 'Open',
     },
   ]
 

@@ -7,7 +7,7 @@ Phase 1). All routes are project-scoped via the X-Project-Id header (get_project
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from app.api.deps import get_project_id, require_user
 from app.schemas.social import PostRequest, ReelRequest, SocialDecision, SocialDraft
@@ -78,3 +78,12 @@ async def decide(draft_id: str, decision: SocialDecision, project_id: str = Depe
     if draft is None:
         raise HTTPException(status_code=404, detail=f"No social draft {draft_id!r}")
     return draft
+
+
+@router.delete("/drafts/{draft_id}", status_code=204)
+async def delete_draft(draft_id: str, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> Response:
+    """Hard-delete a draft and all of its artifacts (storyboard / b-roll / .mp4 / image / voiceover)."""
+    deleted = await get_social_service().delete_draft(draft_id, project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No social draft {draft_id!r}")
+    return Response(status_code=204)

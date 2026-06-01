@@ -1,8 +1,8 @@
-"""Hugging Face provider (image generation) via the Inference API (httpx).
+"""Hugging Face provider (image generation) via the Inference router (httpx).
 
-Used by the Image Generation agent (black-forest-labs/FLUX.1-dev). Text completion
-returns a stub (this client is image-only); real image generation is exercised in
-the Phase-8 media service.
+Used by the Image Generation agent (black-forest-labs/FLUX.1-schnell, served by the
+hf-inference provider on router.huggingface.co). Text completion returns a stub (this
+client is image-only); real image generation is exercised in the Phase-8 media service.
 """
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ class HuggingFaceProvider(BaseProvider):
         return make_stub_response(request, self.name)
 
     @with_provider_retry(max_attempts=4)
-    async def generate_image(self, *, prompt: str, model: str = "black-forest-labs/FLUX.1-dev") -> bytes:
-        """Generate a PNG via the HF Inference API. Returns raw image bytes."""
+    async def generate_image(self, *, prompt: str, model: str = "black-forest-labs/FLUX.1-schnell") -> bytes:
+        """Generate an image via the HF Inference router. Returns raw image bytes (jpeg/png)."""
         if not self.is_configured:
             raise FatalProviderError("HUGGINGFACE_API_KEY is not configured")
         url = self._endpoint.rstrip("/") + f"/models/{model}"

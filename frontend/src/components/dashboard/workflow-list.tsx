@@ -25,13 +25,17 @@ export function WorkflowList({ workflows, onViewAll }: WorkflowListProps) {
           </Button>
         }
       />
-      <Stagger className="mt-2 divide-y divide-white/5">
-        {workflows.map((workflow) => (
-          <StaggerItem key={workflow.id}>
-            <WorkflowRow workflow={workflow} />
-          </StaggerItem>
-        ))}
-      </Stagger>
+      {workflows.length === 0 ? (
+        <p className="py-10 text-center text-xs text-zinc-500">No active workflows yet — they appear here as tasks run.</p>
+      ) : (
+        <Stagger className="mt-2 divide-y divide-white/5">
+          {workflows.map((workflow) => (
+            <StaggerItem key={workflow.id}>
+              <WorkflowRow workflow={workflow} />
+            </StaggerItem>
+          ))}
+        </Stagger>
+      )}
     </GlassCard>
   )
 }

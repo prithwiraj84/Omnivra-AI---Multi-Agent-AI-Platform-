@@ -15,8 +15,23 @@ import {
 import { motion, useReducedMotion } from 'framer-motion'
 import { GlassCard } from '@/components/ui/glass-card'
 import { IconTile } from '@/components/ui/icon-tile'
-import { StatusDot } from '@/components/ui/status-dot'
-import type { AgentSummary } from '@/types'
+import { StatusDot, type DotStatus } from '@/components/ui/status-dot'
+import type { AgentStatus, AgentSummary } from '@/types'
+
+/** Map the agent's live status (from the dashboard) to a presence dot + label + pulse. */
+const STATUS_VIEW: Record<string, { dot: DotStatus; label: string; pulse: boolean }> = {
+  working: { dot: 'working', label: 'Working', pulse: true },
+  needs_approval: { dot: 'needs_approval', label: 'Needs approval', pulse: true },
+  idle: { dot: 'idle', label: 'Idle', pulse: false },
+  online: { dot: 'online', label: 'Online', pulse: true },
+  busy: { dot: 'busy', label: 'Busy', pulse: true },
+  offline: { dot: 'offline', label: 'Offline', pulse: false },
+  error: { dot: 'offline', label: 'Error', pulse: false },
+}
+
+function statusView(status: AgentStatus) {
+  return STATUS_VIEW[status] ?? STATUS_VIEW.idle
+}
 
 /** Department → glyph map for the agent tile icon. */
 const DEPARTMENT_ICON: Record<string, LucideIcon> = {
@@ -44,6 +59,7 @@ export interface AgentCardProps {
 export function AgentCard({ agent }: AgentCardProps) {
   const Icon = DEPARTMENT_ICON[agent.department] ?? Bot
   const reduce = useReducedMotion()
+  const view = statusView(agent.status)
 
   return (
     <motion.div
@@ -59,7 +75,7 @@ export function AgentCard({ agent }: AgentCardProps) {
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-white/[0.06] pt-2.5">
-          <StatusDot status="online" pulse label="Online" />
+          <StatusDot status={view.dot} pulse={view.pulse && !reduce} label={view.label} />
         </div>
       </GlassCard>
     </motion.div>

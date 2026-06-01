@@ -17,14 +17,18 @@ export function ProviderUsage({ providers }: ProviderUsageProps) {
     <Reveal>
       <GlassCard className="space-y-4">
         <SectionHeader label="Model Usage (By Provider)" />
-        <BarMeter
-          rows={providers.map((p) => ({
-            label: p.name,
-            pct: p.pct,
-            value: `${p.calls} calls`,
-            color: p.color,
-          }))}
-        />
+        {providers.length === 0 ? (
+          <p className="py-8 text-center text-xs text-zinc-500">No LLM calls yet — usage appears as workflows run.</p>
+        ) : (
+          <BarMeter
+            rows={providers.map((p) => ({
+              label: p.name,
+              pct: p.pct,
+              value: `${p.calls} calls`,
+              color: p.color,
+            }))}
+          />
+        )}
       </GlassCard>
     </Reveal>
   )

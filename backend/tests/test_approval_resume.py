@@ -22,11 +22,38 @@ from fastapi.testclient import TestClient
 GATED_TASK = "Publish and deploy the release"
 
 
+# Fire-and-poll: POST /run + /decision return IMMEDIATELY ('running') and drive the graph in a
+# BackgroundTask; the terminal state is read back via GET /workflows/runs/{id}. (TestClient runs
+# the BackgroundTask before the next request returns, so the GET sees the finished run.)
+def _terminal_run(client: TestClient, workflow_id: str) -> dict:
+    resp = client.get(f"/api/workflows/runs/{workflow_id}")
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def _run_to_terminal(client: TestClient, task: str) -> dict:
+    """POST a task and return its terminal run record."""
+    resp = client.post("/api/workflows/run", json={"task": task})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "running", resp.text
+    return _terminal_run(client, resp.json()["workflowId"])
+
+
+def _decide(client: TestClient, approval_id: str, workflow_id: str, action: str, note: str | None = None) -> dict:
+    """POST an approval decision and return the resumed run's terminal record."""
+    payload: dict = {"action": action}
+    if note is not None:
+        payload["note"] = note
+    resp = client.post(f"/api/approvals/{approval_id}/decision", json=payload)
+    assert resp.status_code == 200, resp.text
+    return _terminal_run(client, workflow_id)
+
+
 def _start_gated_run(client: TestClient) -> dict:
-    """POST a gated task and assert it paused at the approval gate; return the body."""
+    """POST a gated task; the background run pauses at the gate. Return the paused record."""
     resp = client.post("/api/workflows/run", json={"task": GATED_TASK})
     assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = _terminal_run(client, resp.json()["workflowId"])
     assert body["status"] == "awaiting_approval", body
     pending = body["pendingApproval"]
     assert pending is not None
@@ -43,9 +70,7 @@ def test_run_gate_then_approve(client: TestClient) -> None:
     approval_id = paused["pendingApproval"]["approvalId"]
     paused_output_count = len(paused["agentOutputs"])
 
-    resp = client.post(f"/api/approvals/{approval_id}/decision", json={"action": "approve"})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = _decide(client, approval_id, paused["workflowId"], "approve")
 
     assert body["status"] == "completed", body
     assert body["result"].get("ok") is True, body["result"]
@@ -62,12 +87,7 @@ def test_run_gate_then_reject(client: TestClient) -> None:
     paused = _start_gated_run(client)
     approval_id = paused["pendingApproval"]["approvalId"]
 
-    resp = client.post(
-        f"/api/approvals/{approval_id}/decision",
-        json={"action": "reject", "note": "not ready"},
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = _decide(client, approval_id, paused["workflowId"], "reject", note="not ready")
 
     assert body["status"] == "failed", body
     assert body["errors"], "a rejected run must record an error"
@@ -81,9 +101,7 @@ def test_run_gate_then_rollback(client: TestClient) -> None:
     paused = _start_gated_run(client)
     approval_id = paused["pendingApproval"]["approvalId"]
 
-    resp = client.post(f"/api/approvals/{approval_id}/decision", json={"action": "rollback"})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = _decide(client, approval_id, paused["workflowId"], "rollback")
 
     assert body["status"] == "rolled_back", body
 
@@ -102,7 +120,7 @@ def test_decision_unknown_404(client: TestClient) -> None:
 def test_runs_listing(client: TestClient) -> None:
     # Drive a known completed run and a known gated (awaiting_approval) run so the
     # store has representatives of both states regardless of test ordering.
-    completed = client.post("/api/workflows/run", json={"task": "Build a landing page"}).json()
+    completed = _run_to_terminal(client, "Build a landing page")
     assert completed["status"] == "completed", completed
     completed_id = completed["workflowId"]
 
@@ -144,9 +162,7 @@ def test_runs_listing(client: TestClient) -> None:
 # A non-gated task completes immediately with no approval pause.
 # --------------------------------------------------------------------------- #
 def test_non_gate_completes(client: TestClient) -> None:
-    resp = client.post("/api/workflows/run", json={"task": "Build a landing page"})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = _run_to_terminal(client, "Build a landing page")
 
     assert body["status"] == "completed", body
     assert body["pendingApproval"] is None

@@ -17,6 +17,24 @@ _TMP_WORKSPACE = tempfile.mkdtemp(prefix="omnivra-test-ws-")
 os.environ.setdefault("WORKSPACE_ROOT", _TMP_WORKSPACE)
 os.environ.setdefault("APP_ENV", "test")
 
+# Keep the suite hermetic + offline: neutralize ANY real credentials in backend/.env
+# so tests never hit the network (deterministic + fast). Without this, real provider
+# keys make agents do live LLM calls with tenacity retries -> the suite hangs.
+for _k in (
+    # data / cache
+    "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL", "SUPABASE_DB_PASSWORD",
+    # LLM / media providers (unset -> deterministic stub responses)
+    "GOOGLE_AI_STUDIO_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "HUGGINGFACE_API_KEY",
+    # social pipeline (unset -> stub publish / no b-roll / no voiceover)
+    "PEXELS_API_KEY", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN",
+    "INSTAGRAM_ACCESS_TOKEN", "FACEBOOK_PAGE_TOKEN", "LINKEDIN_ACCESS_TOKEN", "TWITTER_BEARER_TOKEN",
+):
+    os.environ[_k] = ""
+
+# Force STUB reel rendering in tests so the suite is fast + deterministic even when
+# the optional MoviePy engine is installed locally (a real encode takes ~tens of sec).
+os.environ["OMNIVRA_DISABLE_RENDER"] = "1"
+
 
 @pytest.fixture(scope="session")
 def client() -> Iterator["object"]:

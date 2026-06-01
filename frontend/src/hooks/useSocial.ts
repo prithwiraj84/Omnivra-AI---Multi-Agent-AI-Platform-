@@ -7,9 +7,10 @@
  * does the server-side scoping). Fail gracefully offline (jsdom/tests) -> [].
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { decideDraft, draftPost, draftReel, listDrafts, renderDraft } from '@/lib/api/social'
+import { decideDraft, deleteDraft, draftPost, draftReel, listDrafts, renderDraft } from '@/lib/api/social'
 import type { PostRequest, ReelRequest, SocialDecision, SocialDraft } from '@/lib/api/types'
 import { useProjectStore } from '@/store/project'
+import { useSocialProgressStore } from '@/store/social-progress'
 
 /** Live social drafts for the active project — polled; one retry so offline settles fast. */
 export function useSocialDrafts() {
@@ -27,6 +28,8 @@ export function useDraftReel() {
   const qc = useQueryClient()
   return useMutation<SocialDraft, Error, ReelRequest>({
     mutationFn: draftReel,
+    // Evict the previous generation's finished checklist so it can't flash as the new one.
+    onMutate: () => useSocialProgressStore.getState().clearDraftJobs(useProjectStore.getState().activeProjectId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['social'] }),
   })
 }
@@ -36,6 +39,7 @@ export function useDraftPost() {
   const qc = useQueryClient()
   return useMutation<SocialDraft, Error, PostRequest>({
     mutationFn: draftPost,
+    onMutate: () => useSocialProgressStore.getState().clearDraftJobs(useProjectStore.getState().activeProjectId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['social'] }),
   })
 }
@@ -59,6 +63,18 @@ export function useRenderDraft() {
   const qc = useQueryClient()
   return useMutation<SocialDraft, Error, string>({
     mutationFn: (id) => renderDraft(id),
+    // Clear any prior render checklist for this draft so a re-render doesn't show stale done rows.
+    onMutate: (id) => useSocialProgressStore.getState().clear(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['social'] }),
+  })
+}
+
+/** Hard-delete a draft (and its artifacts); drops its live progress + refreshes the list. */
+export function useDeleteDraft() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => deleteDraft(id),
+    onMutate: (id) => useSocialProgressStore.getState().clear(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['social'] }),
   })
 }

@@ -5,6 +5,7 @@ import { AuthGate } from '@/components/auth/auth-gate'
 import { Dashboard } from '@/pages/Dashboard'
 import { Workspace } from '@/pages/Workspace'
 import { Documents } from '@/pages/Documents'
+import { DocumentStudio } from '@/pages/DocumentStudio'
 import { KnowledgeBase } from '@/pages/KnowledgeBase'
 import { Memory } from '@/pages/Memory'
 import { Settings } from '@/pages/Settings'
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/social" element={<Social />} />
+        <Route path="/document-studio" element={<DocumentStudio />} />
         <Route path="/agents" element={<Agents />} />
         <Route path="/workflows" element={<Workflows />} />
         <Route path="/approvals" element={<Approvals />} />

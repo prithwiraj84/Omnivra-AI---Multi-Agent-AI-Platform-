@@ -271,8 +271,8 @@ Backend variables are read by `backend/app/core/config.py` (case-insensitive). S
 | `OPENROUTER_APP_NAME` | `Omnivra AI Company OS` | Sent as `X-Title`. |
 | `GROQ_API_KEY` | _(unset)_ | Groq — QA, SEO, Reel, Whisper STT, Orpheus TTS. |
 | `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | Groq API base. |
-| `HUGGINGFACE_API_KEY` | _(unset)_ | Hugging Face — FLUX.1-dev image generation. |
-| `HUGGINGFACE_INFERENCE_ENDPOINT` | `https://api-inference.huggingface.co` | HF inference base. |
+| `HUGGINGFACE_API_KEY` | _(unset)_ | Hugging Face — FLUX.1-schnell image generation. |
+| `HUGGINGFACE_INFERENCE_ENDPOINT` | `https://router.huggingface.co/hf-inference` | HF inference router base (api-inference.huggingface.co is retired). |
 
 > **Stub mode.** When a provider key is unset, that provider returns a deterministic offline stub so
 > the graph, tests, and media endpoints all run with zero external dependencies. Set the keys above

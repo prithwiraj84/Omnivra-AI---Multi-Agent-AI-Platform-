@@ -11,6 +11,7 @@ from app.core.logging import logger
 from app.graph.state import AgentOutput
 from app.providers.base import CompletionRequest
 from app.providers.registry import ProviderRegistry
+from app.services.usage import record_agent_call
 
 
 def build_system_prompt(spec: AgentSpec) -> str:
@@ -47,6 +48,7 @@ async def run_agent(
     request = CompletionRequest(model=spec.model, messages=messages, max_tokens=max_tokens)
     try:
         resp = await provider.complete(request)
+        record_agent_call(spec.provider, spec.model)  # real session usage for the dashboard
         return AgentOutput(
             agent_id=agent_id,
             content=resp.text,

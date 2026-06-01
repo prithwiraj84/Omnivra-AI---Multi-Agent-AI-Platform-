@@ -57,7 +57,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
     for a in [
         # Executive
         AgentSpec(id="ceo-manager", name="CEO / Manager", department=Department.EXECUTIVE,
-                  provider="google_ai", model="gemini-2.5-flash",
+                  provider="google_ai", model="gemini-3.1-flash-lite",
                   responsibilities=["planning", "orchestration", "delegation", "approvals"]),
         # Architecture
         AgentSpec(id="solution-architect", name="Solution Architect", department=Department.ARCHITECTURE,
@@ -65,7 +65,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["system design", "file manifest"]),
         # Design
         AgentSpec(id="uiux-designer", name="UI/UX Designer", department=Department.DESIGN,
-                  provider="google_ai", model="gemini-2.5-flash",
+                  provider="google_ai", model="gemini-3.1-flash-lite",
                   responsibilities=["wireframes", "design system", "component specs"]),
         # Engineering
         AgentSpec(id="database-engineer", name="Database Engineer", department=Department.ENGINEERING,
@@ -92,7 +92,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   provider="groq", model="groq/compound",
                   responsibilities=["keyword research", "SERP analysis"]),
         AgentSpec(id="social-strategist", name="Social Strategist", department=Department.MARKETING,
-                  provider="openrouter", model="deepseek/deepseek-v4-flash:free",
+                  provider="openrouter", model="moonshotai/kimi-k2.6:free",
                   responsibilities=["content strategy", "campaigns"]),
         AgentSpec(id="reel-automation", name="Reel Automation", department=Department.MARKETING,
                   provider="groq", model="llama-3.1-8b-instant",
@@ -132,7 +132,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   provider="groq", model="canopylabs/orpheus-v1-english",
                   kind=AgentKind.MEDIA, responsibilities=["voice synthesis"]),
         AgentSpec(id="image-generation", name="Image Generation", department=Department.MEDIA,
-                  provider="huggingface", model="black-forest-labs/FLUX.1-dev",
+                  provider="huggingface", model="black-forest-labs/FLUX.1-schnell",
                   kind=AgentKind.MEDIA, responsibilities=["image generation"]),
     ]
 }

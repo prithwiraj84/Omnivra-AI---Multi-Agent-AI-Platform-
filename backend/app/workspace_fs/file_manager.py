@@ -8,6 +8,7 @@ guaranteeing agents can never touch project source code.
 """
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,3 +99,20 @@ class FileManager:
 
     def exists(self, rel_path: str | Path) -> bool:
         return self._resolve(rel_path).exists()
+
+    def delete_path(self, rel_path: str | Path) -> bool:
+        """Delete a file OR directory tree inside the sandbox (path-jailed).
+
+        Returns True if something was removed. Refuses to delete the workspace root
+        itself. Used to purge a social draft's artifacts on delete.
+        """
+        target = self._resolve(rel_path)
+        if target == self.root:
+            raise WorkspaceViolationError("refusing to delete the workspace root")
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            return True
+        if target.is_file():
+            target.unlink(missing_ok=True)
+            return True
+        return False

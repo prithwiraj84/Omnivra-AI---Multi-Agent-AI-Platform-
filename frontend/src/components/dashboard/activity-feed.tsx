@@ -38,18 +38,22 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
       />
 
       <ScrollArea className="max-h-[360px] pr-2">
-        <Stagger className="flex flex-col gap-2.5">
-          {items.map((item) => (
-            <StaggerItem key={item.id} className="flex items-start gap-3">
-              <IconTile accent={item.accent} size="sm" icon={item.icon} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-zinc-200">{item.agent}</p>
-                <p className="truncate text-xs text-zinc-400">{item.action}</p>
-              </div>
-              <span className="shrink-0 text-xs text-zinc-500">{item.time}</span>
-            </StaggerItem>
-          ))}
-        </Stagger>
+        {items.length === 0 ? (
+          <p className="py-10 text-center text-xs text-zinc-500">No recent activity — agent artifacts appear here as they're written.</p>
+        ) : (
+          <Stagger className="flex flex-col gap-2.5">
+            {items.map((item) => (
+              <StaggerItem key={item.id} className="flex items-start gap-3">
+                <IconTile accent={item.accent} size="sm" icon={item.icon} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-zinc-200">{item.agent}</p>
+                  <p className="truncate text-xs text-zinc-400">{item.action}</p>
+                </div>
+                <span className="shrink-0 text-xs text-zinc-500">{item.time}</span>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        )}
       </ScrollArea>
     </GlassCard>
   )

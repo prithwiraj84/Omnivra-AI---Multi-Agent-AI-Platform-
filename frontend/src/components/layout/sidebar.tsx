@@ -5,6 +5,7 @@ import { tBase } from '@/lib/motion'
 import { accentClasses } from '@/lib/accents'
 import { navGroups } from '@/config/navigation'
 import { useUIStore } from '@/store/ui'
+import { useAwaitingApprovals } from '@/hooks/useApprovals'
 import { BrandLogo } from './brand-logo'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -98,6 +99,9 @@ function NavRow({ item, active, collapsed }: NavRowProps) {
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const { pathname } = useLocation()
+  // Live Approvals badge from the real awaiting-runs set (replaces the old hard-coded "7").
+  const { data: awaiting } = useAwaitingApprovals()
+  const awaitingCount = awaiting?.length ?? 0
 
   return (
     <aside
@@ -131,7 +135,11 @@ export function Sidebar() {
               {group.items.map((item) => (
                 <NavRow
                   key={item.to}
-                  item={item}
+                  item={
+                    item.to === '/approvals' && awaitingCount > 0
+                      ? { ...item, badge: awaitingCount }  // live count, only when there are real approvals
+                      : item
+                  }
                   active={isActivePath(pathname, item.to)}
                   collapsed={collapsed}
                 />

@@ -17,6 +17,10 @@ export function TaskDistribution({ data, total }: TaskDistributionProps) {
   return (
     <GlassCard variant="panel">
       <SectionHeader label="Task Distribution" />
+      {data.length === 0 ? (
+        <p className="py-12 text-center text-xs text-zinc-500">No tasks yet — distribution by project appears here.</p>
+      ) : (
+        <>
       <Reveal className="mt-4">
         <OmniDonutChart data={data} centerValue={total} centerLabel="Total Tasks" height={240} />
       </Reveal>
@@ -33,6 +37,8 @@ export function TaskDistribution({ data, total }: TaskDistributionProps) {
           </li>
         ))}
       </ul>
+        </>
+      )}
     </GlassCard>
   )
 }

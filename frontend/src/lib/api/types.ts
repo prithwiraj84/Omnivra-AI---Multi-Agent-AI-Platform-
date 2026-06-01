@@ -76,8 +76,10 @@ export interface PendingApproval {
 
 /** Lifecycle status of a workflow run. */
 export type RunStatus =
+  | 'running' // fire-and-poll: in-flight until the background orchestration reaches a terminal state
   | 'completed'
   | 'failed'
+  | 'stopped' // kill switch / guard halted the run (WorkflowStatus.STOPPED)
   | 'awaiting_approval'
   | 'rolled_back'
 
@@ -120,6 +122,22 @@ export interface Artifact {
 export interface ArtifactContent {
   path: string
   content: string
+}
+
+/**
+ * RunProgramResult — outcome of POST /workspace/run (the guarded in-workspace runner).
+ * `ok` is true only on a clean exit (code 0, not timed out). camelCase wire shape.
+ */
+export interface RunProgramResult {
+  path: string
+  command: string
+  ok: boolean
+  exitCode: number | null
+  timedOut: boolean
+  durationMs: number
+  stdout: string
+  stderr: string
+  note: string
 }
 
 // --- Knowledge base + Memory + RAG (Phase 9) --------------------------------
@@ -270,6 +288,72 @@ export interface PostRequest {
 
 /** Request body for POST /api/social/drafts/{id}/decision. */
 export interface SocialDecision {
+  action: 'approve' | 'reject'
+  note?: string
+}
+
+export type SocialProgressStatus = 'running' | 'done' | 'error'
+export type SocialPhase = 'draft' | 'render'
+
+/**
+ * One 'social_progress' frame pushed over /ws while a reel/post is generating or
+ * rendering — drives the live per-step progress in Social Studio (before approval).
+ * `jobId` is the draft id; `step` is a stable key, deduped across its running -> done frames.
+ */
+export interface SocialProgressEvent {
+  jobId: string
+  projectId: string
+  kind: SocialKind
+  phase: SocialPhase
+  step: string
+  label: string
+  status: SocialProgressStatus
+  index: number
+  total: number
+  detail?: string | null
+}
+
+// --- Document Studio (cp-0025) ----------------------------------------------
+
+export type DocFormat = 'pptx' | 'docx' | 'pdf'
+export type DocStatus = 'awaiting_approval' | 'approved' | 'rejected'
+
+/** One heading + body block of a generated document. */
+export interface DocSection {
+  heading: string
+  body: string
+}
+
+/**
+ * DocumentDraft — a document drafted from a prompt (Gemma writes the content),
+ * rendered to a chosen format and gated on approval. `filePath` is the rendered
+ * .pptx/.docx/.pdf (or a markdown deliverable when `stub` is true — the optional
+ * render engine isn't installed). camelCase wire shape of the /api/documents routes.
+ */
+export interface DocumentDraft {
+  id: string
+  projectId: string
+  prompt: string
+  format: DocFormat
+  title: string
+  status: DocStatus
+  sections: DocSection[]
+  artifacts: string[]
+  filePath: string | null
+  stub: boolean
+  renderNote: string | null // render-engine / stub explanation (survives a decision)
+  note: string | null // human decision reason (set on reject)
+  createdAt: string
+}
+
+/** Request body for POST /api/documents/generate. */
+export interface DocumentRequest {
+  prompt: string
+  format: DocFormat
+}
+
+/** Request body for POST /api/documents/{id}/decision. */
+export interface DocumentDecision {
   action: 'approve' | 'reject'
   note?: string
 }

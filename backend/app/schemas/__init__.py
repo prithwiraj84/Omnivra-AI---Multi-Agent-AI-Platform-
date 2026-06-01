@@ -28,4 +28,9 @@ from app.schemas.orchestration import (  # noqa: F401
     RunRequest,
     RunResult,
 )
-from app.schemas.workspace import Artifact, ArtifactContent  # noqa: F401
+from app.schemas.workspace import (  # noqa: F401
+    Artifact,
+    ArtifactContent,
+    RunProgramRequest,
+    RunProgramResult,
+)

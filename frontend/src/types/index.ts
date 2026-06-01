@@ -5,7 +5,7 @@ import type { Accent } from '@/styles/tokens'
 export type { Accent } from '@/styles/tokens'
 
 // --- Agents -----------------------------------------------------------------
-export type AgentStatus = 'online' | 'offline' | 'busy' | 'error'
+export type AgentStatus = 'online' | 'offline' | 'busy' | 'error' | 'idle' | 'working' | 'needs_approval'
 export type AgentKind = 'text' | 'media' | 'system'
 
 export type ProviderKey = 'google_ai' | 'openrouter' | 'groq' | 'huggingface'

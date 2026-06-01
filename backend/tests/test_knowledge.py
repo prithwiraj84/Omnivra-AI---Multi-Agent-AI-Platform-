@@ -62,7 +62,9 @@ def test_search_and_stats_after_adding_docs(client: TestClient) -> None:
 def test_ingest_workspace_after_run_indexes_artifacts(client: TestClient) -> None:
     run = client.post("/api/workflows/run", json={"task": "Write the Omnivra product brief"})
     assert run.status_code == 200
-    assert run.json()["agentOutputs"], "run must produce agent outputs (workspace artifacts)"
+    # Fire-and-poll: the background run writes the workspace artifacts before the ingest below
+    # (TestClient runs the BackgroundTask before the next request returns).
+    assert run.json()["workflowId"]
 
     ingest = client.post("/api/knowledge/ingest-workspace")
     assert ingest.status_code == 200

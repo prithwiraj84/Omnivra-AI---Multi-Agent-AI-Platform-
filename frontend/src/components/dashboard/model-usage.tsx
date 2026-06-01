@@ -26,15 +26,19 @@ export function ModelUsage({ models, onViewAll }: ModelUsageProps) {
             </Button>
           }
         />
-        <BarMeter
-          className="[&_li_span:first-child]:font-mono"
-          rows={models.map((m) => ({
-            label: m.id,
-            pct: m.pct,
-            value: `${m.calls} calls`,
-            color: m.color,
-          }))}
-        />
+        {models.length === 0 ? (
+          <p className="py-8 text-center text-xs text-zinc-500">No model usage yet — appears as workflows run.</p>
+        ) : (
+          <BarMeter
+            className="[&_li_span:first-child]:font-mono"
+            rows={models.map((m) => ({
+              label: m.id,
+              pct: m.pct,
+              value: `${m.calls} calls`,
+              color: m.color,
+            }))}
+          />
+        )}
       </GlassCard>
     </Reveal>
   )

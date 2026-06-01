@@ -17,6 +17,8 @@ from app.services.reel_render import render_available, render_reel
 from app.services.social import get_social_service
 
 
+
+
 def test_draft_reel_offline(client: TestClient) -> None:
     res = client.post("/api/social/reel", json={"brief": "Launch our AI company OS"})
     assert res.status_code == 200
@@ -90,6 +92,73 @@ def test_unknown_draft_is_404(client: TestClient) -> None:
     assert client.post("/api/social/drafts/nope-xyz/decision", json={"action": "approve"}).status_code == 404
 
 
+def test_delete_draft_removes_record_and_artifacts(client: TestClient) -> None:
+    from app.workspace_fs.paths import project_root
+
+    draft = client.post("/api/social/post", json={"brief": "delete me"}).json()
+    did = draft["id"]
+    social_dir = project_root("__default__") / "reports" / "social" / did
+    assert social_dir.exists(), "the draft's artifacts exist before delete"
+    assert client.get(f"/api/social/drafts/{did}").status_code == 200
+
+    res = client.delete(f"/api/social/drafts/{did}")
+    assert res.status_code == 204
+    assert client.get(f"/api/social/drafts/{did}").status_code == 404, "record is gone"
+    assert not social_dir.exists(), "the draft's artifact folder is purged"
+
+
+def test_delete_unknown_draft_is_404(client: TestClient) -> None:
+    assert client.delete("/api/social/drafts/nope-xyz").status_code == 404
+
+
+def test_delete_mid_render_does_not_resurrect(client: TestClient, monkeypatch) -> None:
+    # If a DELETE lands while a render is in flight, run_render must NOT recreate the record
+    # (save_if_exists guard). Simulate the concurrent delete from inside the b-roll phase.
+    from app.services.social_store import get_social_store
+
+    svc = get_social_service()
+    did = client.post("/api/social/reel", json={"brief": "delete during render"}).json()["id"]
+    svc.begin_render(did, None)
+    store = get_social_store("__default__")
+    assert store.get(did) is not None
+
+    async def _deleting_fetch(query, dest):  # noqa: ANN001 - test stub
+        store.delete(did)  # the user deletes the draft mid-render
+        return None
+
+    monkeypatch.setattr("app.services.social.fetch_broll", _deleting_fetch)
+    asyncio.run(svc.run_render(did, None))
+    assert store.get(did) is None, "run_render must not resurrect a draft deleted mid-render"
+
+
+def test_delete_reclaims_render_voiceover(client: TestClient, monkeypatch) -> None:
+    # A render-time voiceover (flat reports/media/<uuid>.wav) must be tracked in artifacts so
+    # delete_draft reclaims it (it isn't under the per-draft folder).
+    from app.services.media import get_media_service
+    from app.workspace_fs.paths import project_root
+
+    svc = get_social_service()
+    did = client.post("/api/social/reel", json={"brief": "voiceover cleanup"}).json()["id"]
+
+    vo_rel = "reports/media/vo_cleanup_probe.wav"
+    vo_abs = project_root("__default__") / vo_rel
+    vo_abs.parent.mkdir(parents=True, exist_ok=True)
+    vo_abs.write_bytes(b"RIFFfake-wav")
+
+    async def _fake_vo(text, pid):  # noqa: ANN001 - test stub
+        return vo_rel, "synthesized"
+
+    monkeypatch.setattr(get_media_service(), "voiceover_with_note", _fake_vo)
+    svc.begin_render(did, None)
+    asyncio.run(svc.run_render(did, None))
+
+    tracked = client.get(f"/api/social/drafts/{did}").json()["artifacts"]
+    assert vo_rel in tracked, "the render voiceover must be tracked so delete can reclaim it"
+
+    assert client.delete(f"/api/social/drafts/{did}").status_code == 204
+    assert not vo_abs.exists(), "delete must reclaim the render voiceover .wav"
+
+
 def test_render_reel_transitions_to_rendered(client: TestClient) -> None:
     draft = client.post("/api/social/reel", json={"brief": "Render me a teaser"}).json()
     res = client.post(f"/api/social/drafts/{draft['id']}/render")
@@ -153,10 +222,83 @@ def test_render_unknown_draft_404(client: TestClient) -> None:
     assert client.post("/api/social/drafts/nope-xyz/render").status_code == 404
 
 
-@pytest.mark.skipif(not render_available(), reason="render engine (moviepy+pillow) not installed")
+def test_draft_emits_live_progress_events(client: TestClient) -> None:
+    # Generating a post must broadcast per-step 'social_progress' frames (caption -> image
+    # -> ready) so the Social Studio can show live progress before the approval view.
+    with client.websocket_connect("/ws") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        assert ws.receive_json()["type"] == "system_health"
+
+        job = client.post("/api/social/post", json={"brief": "Show me live progress"}).json()["id"]
+
+        steps: list[tuple[str, str]] = []
+        terminal = False
+        for _ in range(50):
+            ev = ws.receive_json()
+            if ev["type"] != "social_progress":  # heartbeat frames interleave
+                continue
+            p = ev["payload"]
+            # Every progress frame carries the routing + step contract the UI relies on.
+            assert p["jobId"] and p["projectId"] and p["kind"] == "post" and p["phase"] == "draft"
+            assert p["status"] in {"running", "done", "error"}
+            assert 1 <= p["index"] <= p["total"]
+            if p["jobId"] == job:
+                steps.append((p["step"], p["status"]))
+                if p["step"] == "ready" and p["status"] == "done":
+                    terminal = True
+                    break
+
+        assert terminal, f"expected a terminal 'ready' progress for {job}; saw {steps}"
+        assert ("caption", "running") in steps and ("image", "running") in steps
+
+
+def test_render_emits_live_progress_events(client: TestClient) -> None:
+    # Rendering a reel must broadcast 'social_progress' render frames (broll -> voiceover ->
+    # assemble -> rendered) so the reel card can show live render progress.
+    draft_id = client.post("/api/social/reel", json={"brief": "Render with progress"}).json()["id"]
+    with client.websocket_connect("/ws") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        assert ws.receive_json()["type"] == "system_health"
+
+        client.post(f"/api/social/drafts/{draft_id}/render")  # TestClient awaits the BackgroundTask
+
+        steps: list[tuple[str, str]] = []
+        for _ in range(80):
+            ev = ws.receive_json()
+            if ev["type"] != "social_progress":
+                continue
+            p = ev["payload"]
+            if p["jobId"] == draft_id and p["phase"] == "render":
+                steps.append((p["step"], p["status"]))
+                if p["step"] == "rendered":
+                    break
+
+        assert ("broll", "running") in steps, f"expected a Pexels b-roll step; saw {steps}"
+        assert ("assemble", "running") in steps, f"expected a MoviePy assemble step; saw {steps}"
+        assert any(s[0] == "rendered" for s in steps), f"expected a terminal 'rendered' step; saw {steps}"
+
+
+def test_patch_pillow_restores_resampling_aliases() -> None:
+    # MoviePy 1.0.3's b-roll resize calls PIL.Image.ANTIALIAS, removed in Pillow 10 — without
+    # the shim every Pexels clip silently degrades to a color background (only captions show).
+    from PIL import Image
+
+    from app.services.reel_render import _patch_pillow
+
+    _patch_pillow()
+    assert hasattr(Image, "ANTIALIAS"), "ANTIALIAS alias must be restored for MoviePy resize"
+    for name in ("LANCZOS", "BILINEAR", "BICUBIC"):
+        assert hasattr(Image, name)
+
+
+@pytest.mark.skipif(not render_available(), reason="render engine not enabled (OMNIVRA_DISABLE_RENDER / moviepy)")
 def test_real_render_produces_mp4(tmp_path) -> None:
-    """When the optional engine is installed, render a real .mp4 fully offline
-    (color backgrounds + Pillow captions, no b-roll/voiceover). Skipped otherwise."""
+    """When rendering is enabled, render a real .mp4 fully offline (color backgrounds, no
+    b-roll/voiceover, NO caption overlay). The output is framed to an exact 1080x1920 9:16 even
+    though there's no CompositeVideoClip canvas. (Skipped in the hermetic suite, which force-
+    disables rendering for speed; runs when OMNIVRA_DISABLE_RENDER is cleared + moviepy present.)"""
+    import moviepy.editor as mp
+
     sb = ReelStoryboard(
         title="t",
         hook="hook",
@@ -170,3 +312,51 @@ def test_real_render_produces_mp4(tmp_path) -> None:
     result = render_reel(sb, out)
     assert result["ok"] and not result["stub"], result
     assert out.exists() and out.stat().st_size > 1000
+
+    clip = mp.VideoFileClip(str(out))
+    try:
+        assert clip.size == [1080, 1920], f"reel must be a 9:16 1080x1920 frame, got {clip.size}"
+    finally:
+        clip.close()
+
+
+@pytest.mark.skipif(not render_available(), reason="render engine not enabled (OMNIVRA_DISABLE_RENDER / moviepy)")
+def test_real_render_audio_matches_video_duration(tmp_path) -> None:
+    """Per-scene voiceover keeps audio in sync with the footage: the rendered video's duration
+    equals its audio track's duration (each scene lasts as long as its own narration).
+    Skipped in the hermetic suite (rendering force-disabled); runs when rendering is enabled."""
+    import math
+    import struct
+    import wave
+
+    import moviepy.editor as mp
+
+    def _wav(path, seconds):  # a simple tone of a known length
+        with wave.open(str(path), "w") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(22050)
+            for n in range(int(22050 * seconds)):
+                w.writeframes(struct.pack("<h", int(9000 * math.sin(2 * math.pi * 330 * n / 22050))))
+        return path
+
+    vos = [_wav(tmp_path / "a.wav", 2.0), _wav(tmp_path / "b.wav", 3.0)]
+    sb = ReelStoryboard(
+        title="t", hook="h",
+        scenes=[
+            ReelScene(duration_sec=1.0, on_screen_text="A", voiceover="a", broll_query=""),
+            ReelScene(duration_sec=1.0, on_screen_text="B", voiceover="b", broll_query=""),
+        ],
+        total_duration_sec=2.0,
+    )
+    out = tmp_path / "reel.mp4"
+    result = render_reel(sb, out, voiceovers=vos)
+    assert result["ok"] and not result["stub"], result
+
+    clip = mp.VideoFileClip(str(out))
+    try:
+        assert clip.audio is not None, "the reel must carry the per-scene voiceover audio"
+        # Scene length = max(1.0, narration + 0.4) -> ~2.4 + ~3.4; audio spans the whole video.
+        assert abs(clip.duration - clip.audio.duration) < 0.3, (clip.duration, clip.audio.duration)
+    finally:
+        clip.close()

@@ -59,30 +59,34 @@ export function PendingApprovals({ items, total, onReview }: PendingApprovalsPro
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
-        {liveRuns.map((run) => {
-          const approvalId = run.pendingApproval?.approvalId
-          const busy = approvalId !== undefined && pendingId === approvalId
-          return (
-            <ApprovalCard
-              key={run.workflowId}
-              item={runToApprovalItem(run)}
-              busy={busy}
-              onDecision={(action: ApprovalAction) => {
-                if (approvalId) decision.mutate({ approvalId, action })
-              }}
-            />
-          )
-        })}
+      {liveRuns.length === 0 && items.length === 0 ? (
+        <p className="py-10 text-center text-xs text-zinc-500">No approvals pending — gated runs &amp; social drafts appear here.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {liveRuns.map((run) => {
+            const approvalId = run.pendingApproval?.approvalId
+            const busy = approvalId !== undefined && pendingId === approvalId
+            return (
+              <ApprovalCard
+                key={run.workflowId}
+                item={runToApprovalItem(run)}
+                busy={busy}
+                onDecision={(action: ApprovalAction) => {
+                  if (approvalId) decision.mutate({ approvalId, action })
+                }}
+              />
+            )
+          })}
 
-        {items.map((item) => (
-          <ApprovalCard key={item.id} item={item} onReview={onReview} />
-        ))}
-      </div>
+          {items.map((item) => (
+            <ApprovalCard key={item.id} item={item} onReview={onReview} />
+          ))}
+        </div>
+      )}
 
       <p className="mt-4 text-right text-xs text-zinc-400">
         Total Pending:{' '}
-        <span className="tabular font-medium text-zinc-200">{total + liveRuns.length}</span>
+        <span className="tabular font-medium text-zinc-200">{Math.max(total, liveRuns.length + items.length)}</span>
       </p>
     </GlassCard>
   )

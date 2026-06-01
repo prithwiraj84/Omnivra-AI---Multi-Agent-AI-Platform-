@@ -99,12 +99,42 @@ def test_kill_switch_wiring() -> None:
 # Endpoint: POST /api/workflows/run returns a camelCase RunResult body.
 # --------------------------------------------------------------------------- #
 def test_run_endpoint(client: TestClient) -> None:
+    # Fire-and-poll: POST returns IMMEDIATELY with a 'running' record (the multi-agent graph
+    # runs in a BackgroundTask so the request can't time out), then the run completes and is
+    # fetchable via GET /workflows/runs/{id}.
     resp = client.post("/api/workflows/run", json={"task": "Build a landing page"})
     assert resp.status_code == 200
-
     body = resp.json()
-    assert body["workflowId"]
-    assert body["status"] == "completed"
-    assert isinstance(body["agentOutputs"], list)
-    assert body["agentOutputs"], "agentOutputs must be a non-empty list"
-    assert "recursionCount" in body
+    wid = body["workflowId"]
+    assert wid
+    assert body["status"] == "running"
+
+    # The TestClient runs the BackgroundTask before returning, so the run has finished.
+    done = client.get(f"/api/workflows/runs/{wid}")
+    assert done.status_code == 200
+    run = done.json()
+    assert run["status"] == "completed"
+    assert isinstance(run["agentOutputs"], list)
+    assert run["agentOutputs"], "agentOutputs must be a non-empty list"
+    assert "recursionCount" in run
+
+
+def test_run_mirrors_a_board_task(client: TestClient) -> None:
+    # Assigning work to the CEO auto-creates a Task on the board (active project) that tracks
+    # the run — created 'in_progress', moved to 'done' when the (non-gated) run completes.
+    before = len(client.get("/api/tasks").json())
+    client.post("/api/workflows/run", json={"task": "Sketch a quick onboarding flow"})
+    tasks = client.get("/api/tasks").json()
+    assert len(tasks) == before + 1, "a CEO run must add exactly one board task"
+    mine = [t for t in tasks if t.get("agentId") == "ceo-manager" and "onboarding flow" in (t.get("title") or "")]
+    assert mine, tasks
+    assert mine[-1]["status"] == "done", "a completed run moves its task to Done"
+
+
+def test_dashboard_agent_status_reflects_gate(client: TestClient) -> None:
+    # A gated run pauses at the approval gate -> the CEO shows 'needs_approval' on the dashboard
+    # (live status), not a permanent 'online'.
+    client.post("/api/workflows/run", json={"task": "Publish and deploy the release"})
+    agents = client.get("/api/dashboard").json()["agents"]
+    ceo = next(a for a in agents if a["id"] == "ceo-manager")
+    assert ceo["status"] == "needs_approval", ceo

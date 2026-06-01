@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   Check,
   Clapperboard,
@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Megaphone,
+  Trash2,
   Wand2,
   X,
 } from 'lucide-react'
@@ -18,10 +19,12 @@ import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Stagger, StaggerItem } from '@/components/common/reveal'
+import { GenerationProgress } from '@/components/social/generation-progress'
 import { cn } from '@/lib/utils'
-import { useDecideDraft, useDraftPost, useDraftReel, useRenderDraft, useSocialDrafts } from '@/hooks/useSocial'
+import { useDecideDraft, useDeleteDraft, useDraftPost, useDraftReel, useRenderDraft, useSocialDrafts } from '@/hooks/useSocial'
 import { mediaUrl } from '@/lib/api/social'
 import { useProjectStore } from '@/store/project'
+import { useSocialProgressStore, type JobProgress } from '@/store/social-progress'
 import type { SocialDraft, SocialKind } from '@/lib/api/types'
 
 const REEL_TARGETS = ['youtube', 'instagram']
@@ -51,15 +54,21 @@ function DraftCard({
   projectId,
   onDecide,
   onRender,
+  onDelete,
   busy,
   rendering,
+  deleting,
+  renderProgress,
 }: {
   draft: SocialDraft
   projectId: string
   onDecide: (id: string, action: 'approve' | 'reject') => void
   onRender: (id: string) => void
+  onDelete: (id: string) => void
   busy: boolean
   rendering: boolean
+  deleting: boolean
+  renderProgress?: JobProgress
 }) {
   const isReel = draft.kind === 'reel'
   const isRendering = rendering || draft.renderStatus === 'rendering'
@@ -77,10 +86,23 @@ function DraftCard({
             {STATUS_LABEL[draft.status] ?? draft.status}
           </NeonBadge>
         </div>
-        <div className="flex flex-wrap justify-end gap-1">
-          {draft.targets.map((t) => (
-            <Chip key={t} label={TARGET_LABEL[t] ?? t} accent="blue" />
-          ))}
+        <div className="flex items-start gap-1.5">
+          <div className="flex flex-wrap justify-end gap-1">
+            {draft.targets.map((t) => (
+              <Chip key={t} label={TARGET_LABEL[t] ?? t} accent="blue" />
+            ))}
+          </div>
+          {/* Discard this draft + its artifacts (storyboard / b-roll / .mp4 / image / voiceover). */}
+          <button
+            type="button"
+            onClick={() => onDelete(draft.id)}
+            disabled={deleting}
+            aria-label={`Delete ${draft.kind}`}
+            title="Delete"
+            className="focus-ring shrink-0 rounded-md p-1 text-[#71717a] transition-colors duration-200 hover:bg-omnivra-red/10 hover:text-omnivra-red disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+          </button>
         </div>
       </div>
 
@@ -125,6 +147,9 @@ function DraftCard({
               src={mediaUrl(draft.videoPath, projectId)}
               className="max-h-[26rem] w-full rounded-md bg-black"
             />
+          ) : isRendering && renderProgress ? (
+            // Live render checklist (Pexels b-roll -> voiceover -> MoviePy assemble).
+            <GenerationProgress job={renderProgress} className="border-0 bg-transparent p-0" />
           ) : (
             <div className="flex items-center justify-between gap-3">
               <span className="min-w-0 flex-1 truncate text-[11px] text-[#a1a1aa]" aria-live="polite">
@@ -255,11 +280,21 @@ export function Social() {
   const draftPost = useDraftPost()
   const decide = useDecideDraft()
   const render = useRenderDraft()
+  const del = useDeleteDraft()
   const activeProjectId = useProjectStore((s) => s.activeProjectId)
+  const progressByJob = useSocialProgressStore((s) => s.byJob)
 
   const list = drafts ?? []
   const generating = draftReel.isPending || draftPost.isPending
   const platformOptions = kind === 'reel' ? REEL_TARGETS : POST_TARGETS
+
+  // While generating, surface the most recent draft-phase progress for this project
+  // (the new draft has no id client-side yet, so we pick the latest live draft job).
+  const draftProgress = useMemo<JobProgress | undefined>(() => {
+    const jobs = Object.values(progressByJob).filter((j) => j.projectId === activeProjectId && j.phase === 'draft')
+    jobs.sort((a, b) => b.updatedAt - a.updatedAt)
+    return jobs[0]
+  }, [progressByJob, activeProjectId])
 
   const chooseKind = (k: SocialKind) => {
     setKind(k)
@@ -283,8 +318,14 @@ export function Social() {
 
   const onDecide = (id: string, action: 'approve' | 'reject') => decide.mutate({ id, decision: { action } })
   const onRender = (id: string) => render.mutate(id)
+  const onDelete = (id: string) => {
+    if (window.confirm('Delete this draft and its files (storyboard, b-roll, video, image, voiceover)? This cannot be undone.')) {
+      del.mutate(id)
+    }
+  }
   const busyId = decide.isPending ? decide.variables?.id : undefined
   const renderingId = render.isPending ? render.variables : undefined
+  const deletingId = del.isPending ? del.variables : undefined
   const failed = draftReel.isError || draftPost.isError
 
   return (
@@ -363,6 +404,10 @@ export function Social() {
               </p>
             )}
           </form>
+
+          {/* Live generation progress (storyboard/voiceover for reels, caption/image for
+              posts) — shown while drafting, before the draft card appears below. */}
+          {generating && draftProgress && <GenerationProgress job={draftProgress} />}
         </div>
       </GlassCard>
 
@@ -382,8 +427,11 @@ export function Social() {
                 projectId={activeProjectId}
                 onDecide={onDecide}
                 onRender={onRender}
+                onDelete={onDelete}
                 busy={busyId === draft.id}
                 rendering={renderingId === draft.id}
+                deleting={deletingId === draft.id}
+                renderProgress={progressByJob[draft.id]?.phase === 'render' ? progressByJob[draft.id] : undefined}
               />
             </StaggerItem>
           ))}

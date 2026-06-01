@@ -8,9 +8,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from app.api.deps import get_project_id
-from app.schemas import Artifact, ArtifactContent
+from app.api.deps import get_project_id, require_user
+from app.schemas import Artifact, ArtifactContent, RunProgramRequest, RunProgramResult
 from app.services.artifacts import get_artifact_service
+from app.services.code_runner import run_workspace_file
 from app.workspace_fs.file_manager import WorkspaceViolationError
 
 router = APIRouter(tags=["workspace"])
@@ -48,3 +49,13 @@ def read_media(path: str, project_id: str = Depends(get_project_id)) -> FileResp
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"No media {path!r}") from exc
     return FileResponse(target)
+
+
+@router.post("/run", response_model=RunProgramResult)
+def run_program(req: RunProgramRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> RunProgramResult:
+    """Run one generated workspace file in a guarded local subprocess (see services.code_runner).
+
+    Path-jailed + allowlisted interpreter (.py/.js) + hard timeout + captured output + minimal env.
+    Never 500s: an escape / unsupported type / timeout returns a result with ok=False and a note.
+    """
+    return RunProgramResult(**run_workspace_file(req.path, project_id))

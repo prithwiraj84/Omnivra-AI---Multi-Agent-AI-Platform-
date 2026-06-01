@@ -47,9 +47,19 @@ class Settings(BaseSettings):
 
     groq_api_key: str | None = None
     groq_base_url: str = "https://api.groq.com/openai/v1"
+    # Groq Text-to-Speech (OpenAI-compatible /audio/speech). Orpheus by default; override
+    # to a PlayAI voice (e.g. model "playai-tts", voice "Fritz-PlayAI") if your account
+    # doesn't have Orpheus access.
+    groq_tts_model: str = "canopylabs/orpheus-v1-english"
+    # Groq's Orpheus voices are: autumn, diana, hannah, austin, daniel, troy
+    # (NOT the canopylabs upstream names like 'tara'). PlayAI uses e.g. 'Fritz-PlayAI'.
+    groq_tts_voice: str = "autumn"
+    groq_tts_format: str = "wav"
 
     huggingface_api_key: str | None = None
-    huggingface_inference_endpoint: str = "https://api-inference.huggingface.co"
+    # HF retired api-inference.huggingface.co; serverless inference now routes through
+    # router.huggingface.co/<provider>. hf-inference serves FLUX.1-schnell for image gen.
+    huggingface_inference_endpoint: str = "https://router.huggingface.co/hf-inference"
 
     # --- Social pipeline (cp-0016): media source + platform publishers ---
     # All optional; unset -> the reel/post pipeline runs in stub mode (no real upload).

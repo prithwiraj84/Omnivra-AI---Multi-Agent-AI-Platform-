@@ -7,9 +7,9 @@
  * Both fail gracefully offline (jsdom/tests) — consumers default to [] / undefined
  * and render the empty state rather than crashing.
  */
-import { useQuery } from '@tanstack/react-query'
-import { listArtifacts, readArtifact } from '@/lib/api/artifacts'
-import type { Artifact, ArtifactContent } from '@/lib/api/types'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { listArtifacts, readArtifact, runProgram } from '@/lib/api/artifacts'
+import type { Artifact, ArtifactContent, RunProgramResult } from '@/lib/api/types'
 import { useProjectStore } from '@/store/project'
 
 /** Live artifact list — polled every 10s; scoped to the active project. */
@@ -30,5 +30,12 @@ export function useArtifact(path: string | null) {
     queryKey: ['artifact', projectId, path],
     queryFn: () => readArtifact(path!),
     enabled: !!path,
+  })
+}
+
+/** Run a generated workspace file in the guarded backend runner (returns its captured output). */
+export function useRunProgram() {
+  return useMutation<RunProgramResult, Error, string>({
+    mutationFn: (path) => runProgram(path),
   })
 }

@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 def test_run_then_memory_is_searchable(client: TestClient) -> None:
     run = client.post("/api/workflows/run", json={"task": "Design the Omnivra dashboard UI"})
     assert run.status_code == 200
-    assert run.json()["agentOutputs"], "run must produce agent outputs to remember"
+    # Fire-and-poll: the POST returns 'running'; the background run persists the outputs + memory
+    # (TestClient runs the BackgroundTask before the next request, so /memory below sees them).
+    assert run.json()["workflowId"]
 
     stats = client.get("/api/memory/stats")
     assert stats.status_code == 200

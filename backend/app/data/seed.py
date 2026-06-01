@@ -50,20 +50,20 @@ DEPARTMENT_ACCENT = {
 }
 
 MODEL_LABEL = {
-    "gemini-2.5-flash": "Gemini 2.5 Flash",
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
     "openai/gpt-oss-120b:free": "GPT OSS 120B",
     "nvidia/nemotron-3-super-120b-a12b:free": "Nemotron 120B",
     "poolside/laguna-m.1:free": "Poolside Laguna",
     "z-ai/glm-4.5-air:free": "GLM 4.5 Air",
     "llama-3.3-70b-versatile": "Llama 3.3 70B",
     "groq/compound": "Groq Compound",
-    "deepseek/deepseek-v4-flash:free": "DeepSeek V4 Flash",
+    "moonshotai/kimi-k2.6:free": "Kimi K2.6",
     "llama-3.1-8b-instant": "Llama 3.1 8B",
     "google/gemma-4-31b-it:free": "Gemma 4 31B",
     "liquid/lfm-2.5-1.2b-thinking:free": "LFM 1.2B",
     "whisper-large-v3-turbo": "Whisper v3 Turbo",
     "canopylabs/orpheus-v1-english": "Orpheus v1",
-    "black-forest-labs/FLUX.1-dev": "FLUX.1-dev",
+    "black-forest-labs/FLUX.1-schnell": "FLUX.1-schnell",
 }
 
 
@@ -174,7 +174,7 @@ def build_dashboard() -> DashboardPayload:
         media_services=[
             MediaService(name="Speech-to-Text", provider="Whisper", calls=128, delta="+15%", accent="cyan", icon="Mic"),
             MediaService(name="Text-to-Speech", provider="Orpheus", calls=95, delta="+35%", accent="violet", icon="Volume2"),
-            MediaService(name="Image Generation", provider="FLUX.1-dev", calls=342, delta="+25%", accent="emerald", icon="Image"),
+            MediaService(name="Image Generation", provider="FLUX.1-schnell", calls=342, delta="+25%", accent="emerald", icon="Image"),
         ],
         achievements=[
             Achievement(title="100+ Tasks Completed", subtitle="Today", accent="cyan", icon="PartyPopper"),

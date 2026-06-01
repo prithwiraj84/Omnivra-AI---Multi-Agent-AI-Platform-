@@ -18,7 +18,8 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui'
-import type { ActivityDTO, DashboardData } from '@/lib/api/types'
+import { useSocialProgressStore } from '@/store/social-progress'
+import type { ActivityDTO, DashboardData, SocialProgressEvent } from '@/lib/api/types'
 import {
   activityFromEvent,
   healthFromEvent,
@@ -83,6 +84,19 @@ export function useWebSocket() {
             queryClient.setQueryData<DashboardData>(['dashboard'], (old) =>
               prependActivity(old, activityFromEvent(payload as ActivityDTO)),
             )
+          }
+          break
+        }
+        case 'social_progress': {
+          // Live per-step generation/render progress -> the Social Studio store.
+          const p = payload as SocialProgressEvent | null
+          if (p && p.jobId) {
+            useSocialProgressStore.getState().upsert(p, Date.now())
+            // A terminal render frame isn't reflected in draft.renderStatus until the next
+            // 10s poll — refresh now so the reel card swaps to the player / Re-render promptly.
+            if (p.phase === 'render' && (p.step === 'rendered' || p.status === 'error')) {
+              queryClient.invalidateQueries({ queryKey: ['social'] })
+            }
           }
           break
         }

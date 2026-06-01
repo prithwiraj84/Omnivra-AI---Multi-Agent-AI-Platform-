@@ -43,11 +43,13 @@ def test_dashboard_returns_full_camelcase_payload(client: TestClient) -> None:
     # Exactly the contract keys, all camelCase.
     assert DASHBOARD_KEYS.issubset(body.keys())
 
-    # Counts pinned by the seed payload.
+    # Agents come from the repo (registry/Supabase) — pinned counts.
     assert len(body["agents"]) == 18
     assert len(body["systemOps"]) == 5
-    assert body["totalTasks"] == 124
-    assert body["totalPendingApprovals"] == 7
+    # Operational totals are now computed LIVE from the running system (cp-0022),
+    # not seed constants — assert the contract/type, not a fixed value.
+    assert isinstance(body["totalTasks"], int) and body["totalTasks"] >= 0
+    assert isinstance(body["totalPendingApprovals"], int) and body["totalPendingApprovals"] >= 0
 
 
 def test_dashboard_agents_are_camelcase(client: TestClient) -> None:
@@ -78,7 +80,7 @@ def test_get_agent_by_id(client: TestClient) -> None:
     agent = resp.json()
     assert agent["id"] == "ceo-manager"
     assert agent["provider"] == "google_ai"
-    assert agent["model"] == "gemini-2.5-flash"
+    assert agent["model"] == "gemini-3.1-flash-lite"
     assert agent["providerLabel"] == "Google AI Studio"
 
 

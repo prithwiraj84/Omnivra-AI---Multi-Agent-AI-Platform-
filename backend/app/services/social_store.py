@@ -29,6 +29,20 @@ class SocialDraftStore:
         with self._lock:
             self._path(draft.id).write_text(draft.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
 
+    def save_if_exists(self, draft: SocialDraft) -> bool:
+        """Save only if the record still exists on disk — atomic under the lock.
+
+        Returns False if it was concurrently deleted (the record is gone). Prevents a
+        long-running render from RESURRECTING a draft the user deleted mid-render: the
+        existence check + write happen together so a concurrent delete() can't slip between.
+        """
+        with self._lock:
+            path = self._path(draft.id)
+            if not path.exists():
+                return False
+            path.write_text(draft.model_dump_json(by_alias=True, indent=2), encoding="utf-8")
+            return True
+
     def get(self, draft_id: str) -> SocialDraft | None:
         try:
             path = self._path(draft_id)
@@ -49,6 +63,18 @@ class SocialDraftStore:
         drafts = [d for stem in stems if (d := self.get(stem))]
         drafts.sort(key=lambda d: d.created_at, reverse=True)  # newest first
         return drafts
+
+    def delete(self, draft_id: str) -> bool:
+        """Remove a draft's JSON record. Returns True if it existed."""
+        try:
+            path = self._path(draft_id)
+        except ValueError:
+            return False
+        with self._lock:
+            if path.exists():
+                path.unlink()
+                return True
+        return False
 
 
 @lru_cache(maxsize=None)

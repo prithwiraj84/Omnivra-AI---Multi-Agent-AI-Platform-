@@ -14,6 +14,7 @@ from app.api.routes import (
     approvals,
     auth,
     dashboard,
+    documents,
     knowledge,
     media,
     memory,
@@ -40,3 +41,4 @@ api_router.include_router(media.router, prefix="/media")
 api_router.include_router(knowledge.router, prefix="/knowledge")
 api_router.include_router(memory.router, prefix="/memory")
 api_router.include_router(social.router, prefix="/social")
+api_router.include_router(documents.router, prefix="/documents")

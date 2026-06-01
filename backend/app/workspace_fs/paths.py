@@ -69,12 +69,13 @@ def reset_caches() -> None:
     """Drop cached per-project store instances (after delete/migrate so no stale state)."""
     # Lazy imports avoid an import cycle (these modules import this one).
     from app.services.artifacts import get_artifact_service
+    from app.services.document_store import get_document_store
     from app.services.knowledge import get_knowledge_service
     from app.services.memory import get_memory_service
     from app.services.social_store import get_social_store
     from app.services.workflow_store import get_workflow_store
 
-    for factory in (get_artifact_service, get_memory_service, get_knowledge_service, get_workflow_store, get_social_store):
+    for factory in (get_artifact_service, get_memory_service, get_knowledge_service, get_workflow_store, get_social_store, get_document_store):
         factory.cache_clear()
 
 
