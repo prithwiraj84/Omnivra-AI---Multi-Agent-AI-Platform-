@@ -118,6 +118,46 @@ def test_run_blocks_path_traversal(path: str) -> None:
         assert r.json()["ok"] is False
 
 
+def test_agent_output_writes_real_code_files() -> None:
+    # A builder agent's `name=<path>` fenced blocks are extracted into REAL workspace files
+    # (so the codebase is browsable + runnable), alongside the .md summary.
+    from app.services.artifacts import extract_code_files, get_artifact_service
+
+    content = (
+        "Built the service:\n"
+        "```python name=app/main.py\nprint('hello')\n```\n"
+        "and a stylesheet:\n"
+        "```css name=static/site.css\nbody { margin: 0; }\n```\n"
+        "plus a malicious one:\n"
+        "```python name=../../../escape.py\nimport os\n```\n"
+    )
+    files = extract_code_files(content)
+    paths = {p for p, _ in files}
+    assert "app/main.py" in paths and "static/site.css" in paths
+    assert not any(".." in p for p in paths), "traversal paths must be dropped by the extractor"
+
+    svc = get_artifact_service("__default__")
+    rels = svc.write_agent_output("wf_codetest", "backend-engineer", content)
+    assert any(r.endswith("backend/wf_codetest/app/main.py") for r in rels)
+    assert any(r.endswith("backend/wf_codetest/static/site.css") for r in rels)
+    assert any(r.endswith("backend/wf_codetest/backend-engineer.md") for r in rels)
+    # The extracted .py is a real, readable, runnable file.
+    py_rel = next(r for r in rels if r.endswith("app/main.py"))
+    assert "print('hello')" in svc.read_artifact(py_rel)
+
+
+def test_extract_code_files_is_not_redos_prone() -> None:
+    # A degenerate backtick-dense blob (no valid fence) must scan in well under a second — the
+    # anchored regex can't catastrophically backtrack and stall the (async) persist path.
+    import time
+
+    from app.services.artifacts import extract_code_files
+
+    t0 = time.monotonic()
+    assert extract_code_files("`" * 50_000) == []
+    assert time.monotonic() - t0 < 1.0, "extract_code_files must stay linear on backtick-dense input"
+
+
 def test_run_enforces_the_timeout(monkeypatch) -> None:
     # A long-running file is killed at the wall-clock cap and reported as timed out (never hangs).
     import app.services.code_runner as cr

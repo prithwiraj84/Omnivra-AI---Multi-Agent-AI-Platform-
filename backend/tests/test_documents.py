@@ -21,10 +21,23 @@ def _engine_installed(fmt: str) -> bool:
     return importlib.util.find_spec(_FMT_MODULE[fmt]) is not None
 
 
-def test_generate_document_offline_stub(client: TestClient) -> None:
-    res = client.post("/api/documents/generate", json={"prompt": "A roadmap for our AI company OS"})
-    assert res.status_code == 200
+def _generate(client: TestClient, prompt: str, fmt: str | None = None) -> dict:
+    """Fire-and-poll: POST returns a 'generating' draft; return the TERMINAL draft.
+
+    The TestClient runs the BackgroundTask before the next request, so the GET sees the
+    finished (awaiting_approval) draft."""
+    payload: dict = {"prompt": prompt}
+    if fmt:
+        payload["format"] = fmt
+    res = client.post("/api/documents/generate", json=payload)
+    assert res.status_code == 200, res.text
     body = res.json()
+    assert body["status"] == "generating", body
+    return client.get(f"/api/documents/{body['id']}").json()
+
+
+def test_generate_document_offline_stub(client: TestClient) -> None:
+    body = _generate(client, "A roadmap for our AI company OS")
     assert body["status"] == "awaiting_approval"
     assert body["format"] == "pdf"  # default format
     assert body["title"], "a document must have a title"
@@ -41,7 +54,7 @@ def test_generate_document_offline_stub(client: TestClient) -> None:
 
 @pytest.mark.parametrize("fmt", ["pptx", "docx", "pdf"])
 def test_generate_each_format(client: TestClient, fmt: str) -> None:
-    body = client.post("/api/documents/generate", json={"prompt": f"Test {fmt}", "format": fmt}).json()
+    body = _generate(client, f"Test {fmt}", fmt)
     assert body["format"] == fmt
     assert body["status"] == "awaiting_approval"
 
@@ -53,7 +66,7 @@ def test_unknown_format_defaults_to_pdf(client: TestClient) -> None:
 
 
 def test_approve_document(client: TestClient) -> None:
-    draft = client.post("/api/documents/generate", json={"prompt": "Approve me"}).json()
+    draft = _generate(client, "Approve me")
     res = client.post(f"/api/documents/{draft['id']}/decision", json={"action": "approve"})
     assert res.status_code == 200
     body = res.json()
@@ -63,7 +76,7 @@ def test_approve_document(client: TestClient) -> None:
 
 
 def test_reject_document(client: TestClient) -> None:
-    draft = client.post("/api/documents/generate", json={"prompt": "Reject me"}).json()
+    draft = _generate(client, "Reject me")
     res = client.post(f"/api/documents/{draft['id']}/decision", json={"action": "reject", "note": "off-topic"})
     assert res.status_code == 200
     body = res.json()
@@ -74,7 +87,7 @@ def test_reject_document(client: TestClient) -> None:
 
 
 def test_get_and_list_document(client: TestClient) -> None:
-    draft = client.post("/api/documents/generate", json={"prompt": "Find me later"}).json()
+    draft = _generate(client, "Find me later")
     got = client.get(f"/api/documents/{draft['id']}")
     assert got.status_code == 200 and got.json()["id"] == draft["id"]
     listed = client.get("/api/documents").json()

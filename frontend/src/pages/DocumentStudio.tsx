@@ -31,11 +31,13 @@ const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
 const FORMAT_LABEL: Record<string, string> = { pptx: 'PPTX', docx: 'DOCX', pdf: 'PDF' }
 
 const STATUS_TONE: Record<string, BadgeTone> = {
+  generating: 'info',
   awaiting_approval: 'warning',
   approved: 'success',
   rejected: 'danger',
 }
 const STATUS_LABEL: Record<string, string> = {
+  generating: 'Generating…',
   awaiting_approval: 'Awaiting approval',
   approved: 'Approved',
   rejected: 'Rejected',
@@ -74,6 +76,19 @@ function DocumentCard({
           {draft.prompt}
         </p>
       </div>
+
+      {/* Generating — fire-and-poll progress bar (content + render happen in the background). */}
+      {draft.status === 'generating' && (
+        <div className="flex flex-col gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+          <div className="flex items-center gap-2 text-xs text-[#a1a1aa]" role="status" aria-live="polite">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-omnivra-cyan" aria-hidden />
+            Writing the content & rendering your {FORMAT_LABEL[draft.format] ?? draft.format.toUpperCase()}…
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-label="Generating document">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-omnivra-cyan" />
+          </div>
+        </div>
+      )}
 
       {/* Content preview — section headings + first lines of body */}
       {draft.sections.length > 0 && (

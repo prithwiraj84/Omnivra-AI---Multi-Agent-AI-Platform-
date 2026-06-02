@@ -316,7 +316,7 @@ export interface SocialProgressEvent {
 // --- Document Studio (cp-0025) ----------------------------------------------
 
 export type DocFormat = 'pptx' | 'docx' | 'pdf'
-export type DocStatus = 'awaiting_approval' | 'approved' | 'rejected'
+export type DocStatus = 'generating' | 'awaiting_approval' | 'approved' | 'rejected'
 
 /** One heading + body block of a generated document. */
 export interface DocSection {

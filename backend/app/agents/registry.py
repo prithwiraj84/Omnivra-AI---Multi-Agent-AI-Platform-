@@ -61,7 +61,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["planning", "orchestration", "delegation", "approvals"]),
         # Architecture
         AgentSpec(id="solution-architect", name="Solution Architect", department=Department.ARCHITECTURE,
-                  provider="openrouter", model="openai/gpt-oss-120b:free",
+                  provider="groq", model="openai/gpt-oss-120b",
                   responsibilities=["system design", "file manifest"]),
         # Design
         AgentSpec(id="uiux-designer", name="UI/UX Designer", department=Department.DESIGN,
@@ -85,7 +85,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   provider="groq", model="llama-3.3-70b-versatile",
                   responsibilities=["test plans", "test code", "validation"]),
         AgentSpec(id="secops-engineer", name="SecOps Engineer", department=Department.QUALITY_SECURITY,
-                  provider="openrouter", model="openai/gpt-oss-120b:free",
+                  provider="groq", model="openai/gpt-oss-120b",
                   responsibilities=["threat modeling", "audits", "hardening"]),
         # Marketing
         AgentSpec(id="seo-researcher", name="SEO Researcher", department=Department.MARKETING,

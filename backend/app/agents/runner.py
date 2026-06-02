@@ -14,14 +14,35 @@ from app.providers.registry import ProviderRegistry
 from app.services.usage import record_agent_call
 
 
+# Builder agents that should emit real, runnable code FILES (not prose descriptions).
+_CODE_AGENTS = {
+    "solution-architect", "uiux-designer", "frontend-engineer",
+    "backend-engineer", "api-engineer", "database-engineer",
+}
+
+_CODE_FILE_INSTRUCTION = (
+    " You BUILD real software, so DELIVER actual files — not descriptions. For EVERY file you create, "
+    "output a fenced code block whose info line carries the relative path as `name=<path>`, e.g.\n"
+    "```python name=app/main.py\n<the complete file contents>\n```\n"
+    "Write complete, runnable code with real filenames + extensions (.py/.js/.ts/.tsx/.html/.css/.sql/.json). "
+    "No placeholders, no '...'. A short note is fine, but the code files ARE the deliverable."
+)
+
+
+def is_code_agent(agent_id: str) -> bool:
+    """True for builder agents expected to emit real code files (drives token budget + persistence)."""
+    return agent_id in _CODE_AGENTS
+
+
 def build_system_prompt(spec: AgentSpec) -> str:
     """Role/system prompt that frames an agent for its provider."""
     responsibilities = ", ".join(spec.responsibilities) or "your area of expertise"
-    return (
+    base = (
         f"You are the {spec.name}, the {spec.department.value} specialist at Omnivra, "
         f"an autonomous AI software company. Your responsibilities: {responsibilities}. "
         "Produce concrete, professional, well-structured output for the task. Be concise."
     )
+    return base + _CODE_FILE_INSTRUCTION if spec.id in _CODE_AGENTS else base
 
 
 async def run_agent(

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Awaitable, Callable
 
 from app.agents.registry import get_agent
-from app.agents.runner import run_agent
+from app.agents.runner import is_code_agent, run_agent
 from app.core.logging import logger
 from app.data.seed import DEPARTMENT_ACCENT
 from app.graph.state import AgentOutput, OmnivraState, WorkflowStatus
@@ -55,7 +55,9 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
         for agent_id in plan:
             base = _build_context(prior + outputs)
             context = f"{memory_block}\n\n{base}".strip() if memory_block else base
-            out = await run_agent(agent_id, task, registry=registry, context=context)
+            # Builder agents need a far bigger budget to emit complete code files (512 is prose-sized).
+            max_tokens = 2048 if is_code_agent(agent_id) else 512
+            out = await run_agent(agent_id, task, registry=registry, context=context, max_tokens=max_tokens)
             outputs.append(out)
 
             spec = get_agent(agent_id)

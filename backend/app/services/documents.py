@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.agents.runner import run_agent
+from app.core.logging import logger
 from app.providers.registry import get_provider_registry
 from app.schemas.documents import DocSection, DocumentDraft
 from app.services.artifacts import get_artifact_service
@@ -29,41 +30,74 @@ def _now() -> str:
 
 
 class DocumentService:
-    async def draft_document(self, prompt: str, fmt: str, project_id: str | None) -> DocumentDraft:
+    def begin_document(self, prompt: str, fmt: str, project_id: str | None) -> DocumentDraft:
+        """Persist a 'generating' placeholder + return it IMMEDIATELY (fire-and-poll).
+
+        The model write + render (which can take many seconds — well past the UI request timeout
+        when a provider is rate-limited) runs in the background via :meth:`generate_document`, which
+        overwrites this record. The client polls GET /api/documents until status != 'generating'.
+        This is what stops Document Studio's 'Could not generate the document' timeout.
+        """
         pid = safe_project_id(project_id)
         fmt = fmt if fmt in _EXT else "pdf"
         doc_id = "doc_" + uuid4().hex[:12]
-        title, sections = await self._build_content(prompt)
-
-        base = f"reports/documents/{doc_id}"
-        fm = get_artifact_service(pid).fm
-        artifacts: list[str] = [
-            fm.write_text(f"{base}/content.json", json.dumps({"title": title, "sections": [s.model_dump() for s in sections]}, indent=2), agent_id="documentation-agent").rel_path,
-        ]
-
-        # Render the real file (or fall back to a markdown deliverable).
-        out_rel = f"{base}/document.{_EXT[fmt]}"
-        result = render_document(title, [s.model_dump() for s in sections], project_root(pid) / out_rel, fmt)
-        if result.get("ok") and not result.get("stub"):
-            file_path: str | None = out_rel
-            stub = False
-            artifacts.append(out_rel)
-        else:
-            # Markdown deliverable when the engine is absent/disabled (or a hard failure).
-            md_rel = f"{base}/document.md"
-            fm.write_text(md_rel, self._markdown(title, sections), agent_id="documentation-agent")
-            artifacts.append(md_rel)
-            file_path = md_rel
-            stub = True
-
         draft = DocumentDraft(
-            id=doc_id, project_id=pid, prompt=prompt, format=fmt, title=title,
-            status="awaiting_approval", sections=sections, artifacts=artifacts,
-            file_path=file_path, stub=stub, render_note=result.get("note"), created_at=_now(),
+            id=doc_id, project_id=pid, prompt=prompt, format=fmt, title="Generating…",
+            status="generating", sections=[], artifacts=[], file_path=None, stub=False,
+            render_note=None, created_at=_now(),
         )
         get_document_store(pid).save(draft)
-        await emit("approval", {"approvalId": doc_id, "title": "Document approval required", "kind": "document_publish", "requestedBy": "documentation-agent", "priority": "medium"})
         return draft
+
+    async def generate_document(self, doc_id: str, prompt: str, fmt: str, project_id: str | None) -> None:
+        """Background job: write the content (Gemma) + render the file, then move the draft to
+        'awaiting_approval'. Never raises — on any error the draft still reaches a terminal state
+        (so the UI poll never spins forever)."""
+        pid = safe_project_id(project_id)
+        fmt = fmt if fmt in _EXT else "pdf"
+        store = get_document_store(pid)
+        existing = store.get(doc_id)
+        created_at = existing.created_at if existing else _now()  # keep stable list ordering
+        try:
+            title, sections = await self._build_content(prompt)
+
+            base = f"reports/documents/{doc_id}"
+            fm = get_artifact_service(pid).fm
+            artifacts: list[str] = [
+                fm.write_text(f"{base}/content.json", json.dumps({"title": title, "sections": [s.model_dump() for s in sections]}, indent=2), agent_id="documentation-agent").rel_path,
+            ]
+
+            # Render the real file (or fall back to a markdown deliverable).
+            out_rel = f"{base}/document.{_EXT[fmt]}"
+            result = render_document(title, [s.model_dump() for s in sections], project_root(pid) / out_rel, fmt)
+            if result.get("ok") and not result.get("stub"):
+                file_path: str | None = out_rel
+                stub = False
+                artifacts.append(out_rel)
+            else:
+                md_rel = f"{base}/document.md"
+                fm.write_text(md_rel, self._markdown(title, sections), agent_id="documentation-agent")
+                artifacts.append(md_rel)
+                file_path = md_rel
+                stub = True
+
+            store.save(DocumentDraft(
+                id=doc_id, project_id=pid, prompt=prompt, format=fmt, title=title,
+                status="awaiting_approval", sections=sections, artifacts=artifacts,
+                file_path=file_path, stub=stub, render_note=result.get("note"), created_at=created_at,
+            ))
+            await emit("approval", {"approvalId": doc_id, "title": "Document approval required", "kind": "document_publish", "requestedBy": "documentation-agent", "priority": "medium"})
+        except Exception as exc:  # noqa: BLE001 - reach a terminal state, never leave it 'generating'
+            logger.error("document generation failed for {}: {}", doc_id, repr(exc))
+            try:  # the terminal save itself must not raise out of the BackgroundTask (would orphan 'generating')
+                store.save(DocumentDraft(
+                    id=doc_id, project_id=pid, prompt=prompt, format=fmt,
+                    title=(prompt.strip()[:80] or "Document"), status="awaiting_approval",
+                    sections=[], artifacts=existing.artifacts if existing else [], file_path=None, stub=True,
+                    render_note=f"Generation error: {type(exc).__name__}", created_at=created_at,
+                ))
+            except Exception:  # noqa: BLE001 - last resort; nothing more we can do but log
+                logger.error("terminal save for document {} also failed", doc_id)
 
     async def _build_content(self, prompt: str) -> tuple[str, list[DocSection]]:
         ask = (

@@ -51,7 +51,7 @@ DEPARTMENT_ACCENT = {
 
 MODEL_LABEL = {
     "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-    "openai/gpt-oss-120b:free": "GPT OSS 120B",
+    "openai/gpt-oss-120b": "GPT OSS 120B",
     "nvidia/nemotron-3-super-120b-a12b:free": "Nemotron 120B",
     "poolside/laguna-m.1:free": "Poolside Laguna",
     "z-ai/glm-4.5-air:free": "GLM 4.5 Air",
@@ -164,7 +164,7 @@ def build_dashboard() -> DashboardPayload:
             ProviderUsage(name="Hugging Face", pct=12, calls=384, color=ACCENT_HEX["violet"]),
         ],
         model_usage=[
-            ModelUsage(id="openai/gpt-oss-120b:free", pct=32, calls=512, color=CATEGORICAL[0]),
+            ModelUsage(id="openai/gpt-oss-120b", pct=32, calls=512, color=CATEGORICAL[0]),
             ModelUsage(id="z-ai/glm-4.5-air:free", pct=24, calls=1384, color=CATEGORICAL[1]),
             ModelUsage(id="nvidia/nemotron-3-super-120b", pct=18, calls=288, color=CATEGORICAL[2]),
             ModelUsage(id="poolside/laguna-m.1:free", pct=12, calls=192, color=CATEGORICAL[3]),

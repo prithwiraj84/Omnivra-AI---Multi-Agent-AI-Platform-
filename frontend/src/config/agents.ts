@@ -26,14 +26,14 @@ interface Seed {
 
 const SEEDS: Seed[] = [
   { id: 'ceo-manager', name: 'CEO / Manager', department: 'Executive', provider: 'google_ai', model: 'gemini-3.1-flash-lite', modelLabel: 'Gemini 3.1 Flash Lite' },
-  { id: 'solution-architect', name: 'Solution Architect', department: 'Architecture', provider: 'openrouter', model: 'openai/gpt-oss-120b:free', modelLabel: 'GPT OSS 120B' },
+  { id: 'solution-architect', name: 'Solution Architect', department: 'Architecture', provider: 'groq', model: 'openai/gpt-oss-120b', modelLabel: 'GPT OSS 120B' },
   { id: 'uiux-designer', name: 'UI/UX Designer', department: 'Design', provider: 'google_ai', model: 'gemini-3.1-flash-lite', modelLabel: 'Gemini 3.1 Flash Lite' },
   { id: 'database-engineer', name: 'Database Engineer', department: 'Engineering', provider: 'openrouter', model: 'nvidia/nemotron-3-super-120b-a12b:free', modelLabel: 'Nemotron 120B' },
   { id: 'frontend-engineer', name: 'Frontend Engineer', department: 'Engineering', provider: 'openrouter', model: 'poolside/laguna-m.1:free', modelLabel: 'Poolside Laguna' },
   { id: 'backend-engineer', name: 'Backend Engineer', department: 'Engineering', provider: 'openrouter', model: 'z-ai/glm-4.5-air:free', modelLabel: 'GLM 4.5 Air' },
   { id: 'api-engineer', name: 'API Engineer', department: 'Engineering', provider: 'openrouter', model: 'z-ai/glm-4.5-air:free', modelLabel: 'GLM 4.5 Air' },
   { id: 'qa-engineer', name: 'QA Engineer', department: 'Quality & Security', provider: 'groq', model: 'llama-3.3-70b-versatile', modelLabel: 'Llama 3.3 70B' },
-  { id: 'secops-engineer', name: 'SecOps Engineer', department: 'Quality & Security', provider: 'openrouter', model: 'openai/gpt-oss-120b:free', modelLabel: 'GPT OSS 120B' },
+  { id: 'secops-engineer', name: 'SecOps Engineer', department: 'Quality & Security', provider: 'groq', model: 'openai/gpt-oss-120b', modelLabel: 'GPT OSS 120B' },
   { id: 'seo-researcher', name: 'SEO Researcher', department: 'Marketing', provider: 'groq', model: 'groq/compound', modelLabel: 'Groq Compound' },
   { id: 'social-strategist', name: 'Social Strategist', department: 'Marketing', provider: 'openrouter', model: 'moonshotai/kimi-k2.6:free', modelLabel: 'Kimi K2.6' },
   { id: 'reel-automation', name: 'Reel Automation', department: 'Marketing', provider: 'groq', model: 'llama-3.1-8b-instant', modelLabel: 'Llama 3.1 8B' },

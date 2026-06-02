@@ -7,7 +7,7 @@ All routes are project-scoped via the X-Project-Id header (get_project_id).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.api.deps import get_project_id, require_user
 from app.schemas.documents import DocumentDecision, DocumentDraft, DocumentRequest
@@ -18,9 +18,22 @@ router = APIRouter(tags=["documents"])
 
 
 @router.post("/generate", response_model=DocumentDraft)
-async def generate(req: DocumentRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> DocumentDraft:
-    """Draft a document (Gemma writes content -> rendered to the chosen format) awaiting approval."""
-    return await get_document_service().draft_document(req.prompt, req.format, project_id)
+def generate(
+    req: DocumentRequest,
+    background_tasks: BackgroundTasks,
+    project_id: str = Depends(get_project_id),
+    _user: str = Depends(require_user),
+) -> DocumentDraft:
+    """Kick off document generation; returns IMMEDIATELY with a 'generating' draft.
+
+    Gemma writing the content + rendering the file can take many seconds (longer when a provider
+    is rate-limited), so it runs in a BackgroundTask and the client polls GET /api/documents until
+    the draft leaves 'generating' (-> 'awaiting_approval'). Avoids the request-timeout failure.
+    """
+    svc = get_document_service()
+    pending = svc.begin_document(req.prompt, req.format, project_id)
+    background_tasks.add_task(svc.generate_document, pending.id, req.prompt, pending.format, project_id)
+    return pending
 
 
 @router.get("", response_model=list[DocumentDraft])

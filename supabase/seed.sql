@@ -41,7 +41,7 @@ insert into public.models (provider_id, model_id, display_name, modality, is_fre
 select p.id, m.model_id, m.display_name, m.modality::model_modality, m.is_free
 from (values
   ('google_ai_studio','gemini-3.1-flash-lite',                    'Gemini 3.1 Flash Lite',     'multimodal', false),
-  ('openrouter',      'openai/gpt-oss-120b:free',                 'GPT-OSS 120B (free)',       'text',       true),
+  ('groq',            'openai/gpt-oss-120b',                      'GPT-OSS 120B',              'text',       false),
   ('openrouter',      'nvidia/nemotron-3-super-120b-a12b:free',   'Nemotron 3 Super 120B (free)','text',     true),
   ('openrouter',      'poolside/laguna-m.1:free',                 'Poolside Laguna M.1 (free)','text',       true),
   ('openrouter',      'z-ai/glm-4.5-air:free',                    'GLM 4.5 Air (free)',        'text',       true),
@@ -68,14 +68,14 @@ select a.key, a.name, a.title, d.id, p.id, mo.id, a.icon, a.is_system, a.sort_or
 from (values
   -- key, name, title, dept_key, provider_key, model_id, icon, is_system, sort
   ('ceo_manager',        'CEO / Manager',        'Chief Executive',     'executive',      'google_ai_studio','gemini-3.1-flash-lite',                  'crown',        false, 1),
-  ('solution_architect', 'Solution Architect',   'System Design',       'architecture',   'openrouter',      'openai/gpt-oss-120b:free',               'layout-grid',  false, 2),
+  ('solution_architect', 'Solution Architect',   'System Design',       'architecture',   'groq',            'openai/gpt-oss-120b',                    'layout-grid',  false, 2),
   ('uiux_designer',      'UI/UX Designer',       'Product Design',      'design',         'google_ai_studio','gemini-3.1-flash-lite',                  'palette',      false, 3),
   ('database_engineer',  'Database Engineer',    'Data Platform',       'engineering',    'openrouter',      'nvidia/nemotron-3-super-120b-a12b:free', 'database',     false, 4),
   ('frontend_engineer',  'Frontend Engineer',    'UI Engineering',      'engineering',    'openrouter',      'poolside/laguna-m.1:free',               'monitor',      false, 5),
   ('backend_engineer',   'Backend Engineer',     'Services',            'engineering',    'openrouter',      'z-ai/glm-4.5-air:free',                  'server',       false, 6),
   ('api_engineer',       'API Engineer',         'Integrations',        'engineering',    'openrouter',      'z-ai/glm-4.5-air:free',                  'plug',         false, 7),
   ('qa_engineer',        'QA Engineer',          'Quality Assurance',   'quality_security','groq',           'llama-3.3-70b-versatile',                'bug',          false, 8),
-  ('secops_engineer',    'SecOps Engineer',      'Security',            'quality_security','openrouter',     'openai/gpt-oss-120b:free',               'shield-check', false, 9),
+  ('secops_engineer',    'SecOps Engineer',      'Security',            'quality_security','groq',           'openai/gpt-oss-120b',                    'shield-check', false, 9),
   ('seo_researcher',     'SEO Researcher',       'Search',              'marketing',      'groq',            'groq/compound',                          'search',       false, 10),
   ('social_strategist',  'Social Strategist',    'Social',              'marketing',      'openrouter',      'moonshotai/kimi-k2.6:free',              'share-2',      false, 11),
   ('reel_automation',    'Reel Automation',      'Video',               'marketing',      'groq',            'llama-3.1-8b-instant',                   'film',         false, 12),

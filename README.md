@@ -169,14 +169,14 @@ volatile runtime state lives under `workspace/.state/`.
 | Department | Agent | Provider / Model |
 |---|---|---|
 | Executive | CEO / Manager | Google AI Studio · `gemini-3.1-flash-lite` |
-| Architecture | Solution Architect | OpenRouter · `openai/gpt-oss-120b:free` |
+| Architecture | Solution Architect | Groq · `openai/gpt-oss-120b` |
 | Design | UI/UX Designer | Google AI Studio · `gemini-3.1-flash-lite` |
 | Engineering | Database Engineer | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
 | Engineering | Frontend Engineer | OpenRouter · `poolside/laguna-m.1:free` |
 | Engineering | Backend Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
 | Engineering | API Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
 | Quality & Security | QA Engineer | Groq · `llama-3.3-70b-versatile` |
-| Quality & Security | SecOps Engineer | OpenRouter · `openai/gpt-oss-120b:free` |
+| Quality & Security | SecOps Engineer | Groq · `openai/gpt-oss-120b` |
 | Marketing | SEO Researcher | Groq · `groq/compound` |
 | Marketing | Social Strategist | OpenRouter · `moonshotai/kimi-k2.6:free` |
 | Marketing | Reel Automation | Groq · `llama-3.1-8b-instant` |

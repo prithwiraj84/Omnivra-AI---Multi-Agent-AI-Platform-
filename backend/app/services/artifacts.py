@@ -7,6 +7,7 @@ filed by agent into the standard subdirs (docs / frontend / backend / presentati
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -14,6 +15,26 @@ from typing import Any
 
 from app.workspace_fs.file_manager import SUBDIRS, FileManager
 from app.workspace_fs.paths import DEFAULT_PROJECT, project_root
+
+# Builder agents emit files as fenced blocks whose info line carries `name=<path>`, e.g.
+# ```python name=app/main.py  ...  ``` — extract (path, code) so we can write real code files.
+# ANCHORED to line starts with NO backticks allowed in the info-line scan, so it is linear and
+# can't catastrophically backtrack on backtick-dense input (which would stall the event loop).
+# NOTE: a flat fence parse clips a body that itself contains a ``` line — acceptable for now.
+_CODE_BLOCK = re.compile(r"(?ms)^```[^\n`]*\bname=([^\s`]+)[^\n]*\n(.*?)\n```\s*$")
+_MAX_SCAN = 400_000  # never scan an absurdly large blob (belt-and-suspenders vs pathological input)
+
+
+def extract_code_files(content: str) -> list[tuple[str, str]]:
+    """Pull (relative_path, code) pairs from ``name=``-tagged fenced blocks in agent output."""
+    content = (content or "")[:_MAX_SCAN]
+    files: list[tuple[str, str]] = []
+    for m in _CODE_BLOCK.finditer(content):
+        path = m.group(1).strip().strip('"').strip("'")
+        code = m.group(2)
+        if path and ".." not in path:  # the FileManager also jails; this is belt-and-suspenders
+            files.append((path, code.rstrip("\n") + "\n"))
+    return files
 
 # agent id -> workspace subdir for its artifacts.
 _CATEGORY: dict[str, str] = {
@@ -44,11 +65,27 @@ class ArtifactService:
         self.fm = FileManager(workspace_root)
         self.fm.ensure_layout()
 
-    def write_agent_output(self, workflow_id: str, agent_id: str, content: str) -> str:
-        """Write one agent's output as a markdown artifact; return its workspace-relative path."""
-        rel = f"{_category(agent_id)}/{workflow_id}/{agent_id}.md"
-        self.fm.write_text(rel, content or "", agent_id=agent_id)
-        return rel
+    def write_agent_output(self, workflow_id: str, agent_id: str, content: str) -> list[str]:
+        """Persist one agent's output: a markdown summary PLUS every real code file it emitted
+        (``name=<path>`` fenced blocks) written as ACTUAL files under <category>/<workflow_id>/.
+
+        Returns all workspace-relative paths written (the .md first). So the workspace shows a real
+        browsable, runnable codebase — not just a prose description. Path-jailed: a declared path
+        that would escape the sandbox is skipped.
+        """
+        cat = _category(agent_id)
+        rels: list[str] = []
+        md_rel = f"{cat}/{workflow_id}/{agent_id}.md"
+        self.fm.write_text(md_rel, content or "", agent_id=agent_id)
+        rels.append(md_rel)
+        for decl_path, code in extract_code_files(content or ""):
+            rel = f"{cat}/{workflow_id}/{decl_path.lstrip('/').lstrip(chr(92))}"
+            try:
+                self.fm.write_text(rel, code, agent_id=agent_id)  # jailed; rejects escapes
+                rels.append(rel)
+            except Exception:  # noqa: BLE001 - skip a file whose declared path escapes the sandbox
+                continue
+        return rels
 
     def write_run_report(self, workflow_id: str, task: str, plan: list[str], outputs: list[dict[str, Any]]) -> str:
         """Write a human-readable run report summarizing the workflow."""
@@ -66,7 +103,7 @@ class ArtifactService:
             arts: list[str] = []
             if o.get("content"):
                 try:
-                    arts = [self.write_agent_output(workflow_id, o.get("agent_id", "agent"), o.get("content", ""))]
+                    arts = self.write_agent_output(workflow_id, o.get("agent_id", "agent"), o.get("content", ""))
                 except Exception:  # noqa: BLE001 - never let artifact IO break a run
                     arts = []
             enriched.append({**o, "artifacts": arts})

@@ -11,13 +11,14 @@ import { decideDocument, generateDocument, listDocuments } from '@/lib/api/docum
 import type { DocumentDecision, DocumentDraft, DocumentRequest } from '@/lib/api/types'
 import { useProjectStore } from '@/store/project'
 
-/** Live document drafts for the active project — polled; one retry so offline settles fast. */
+/** Live document drafts for the active project — polled; one retry so offline settles fast.
+ *  Polls FAST (2s) while any draft is still 'generating' (fire-and-poll), else every 10s. */
 export function useDocuments() {
   const projectId = useProjectStore((s) => s.activeProjectId)
   return useQuery<DocumentDraft[]>({
     queryKey: ['documents', projectId],
     queryFn: listDocuments,
-    refetchInterval: 10_000,
+    refetchInterval: (query) => (query.state.data?.some((d) => d.status === 'generating') ? 2_000 : 10_000),
     retry: 1,
   })
 }

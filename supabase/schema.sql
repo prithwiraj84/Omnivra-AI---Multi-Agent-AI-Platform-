@@ -131,7 +131,7 @@ create table if not exists public.providers (
 create table if not exists public.models (
   id                 uuid primary key default gen_random_uuid(),
   provider_id        uuid not null references public.providers(id) on delete restrict,
-  model_id           text not null,           -- e.g. 'openai/gpt-oss-120b:free'
+  model_id           text not null,           -- e.g. 'openai/gpt-oss-120b'
   display_name       text not null,
   modality           model_modality not null default 'text',
   context_window     int,
