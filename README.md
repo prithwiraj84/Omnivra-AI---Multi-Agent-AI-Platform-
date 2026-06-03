@@ -180,8 +180,8 @@ volatile runtime state lives under `workspace/.state/`.
 | Marketing | SEO Researcher | Groq · `groq/compound` |
 | Marketing | Social Strategist | OpenRouter · `moonshotai/kimi-k2.6:free` |
 | Marketing | Reel Automation | Groq · `llama-3.1-8b-instant` |
-| Documentation | Documentation Agent | OpenRouter · `google/gemma-4-31b-it:free` |
-| Documentation | Presentation Designer | OpenRouter · `google/gemma-4-31b-it:free` |
+| Documentation | Documentation Agent | Groq · `llama-3.3-70b-versatile` |
+| Documentation | Presentation Designer | Groq · `llama-3.3-70b-versatile` |
 | Recovery | Recovery Agent | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
 | System Ops | Task Classifier, Workflow Router, Memory Retrieval, Notification, Log Analyzer | OpenRouter · `liquid/lfm-2.5-1.2b-thinking:free` |
 | Media | Speech-to-Text | Groq · `whisper-large-v3-turbo` |

@@ -5,6 +5,7 @@ import {
   FileText,
   FileType2,
   Loader2,
+  Palette,
   Presentation,
   Wand2,
   X,
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils'
 import { useDecideDocument, useDocuments, useGenerateDocument } from '@/hooks/useDocuments'
 import { documentUrl } from '@/lib/api/documents'
 import { useProjectStore } from '@/store/project'
-import type { DocFormat, DocumentDraft } from '@/lib/api/types'
+import type { DocFormat, DocTable, DocTheme, DocumentDraft } from '@/lib/api/types'
 
 const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
   { value: 'pptx', label: 'Presentation', icon: Presentation },
@@ -29,6 +30,60 @@ const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
   { value: 'pdf', label: 'PDF', icon: FileType2 },
 ]
 const FORMAT_LABEL: Record<string, string> = { pptx: 'PPTX', docx: 'DOCX', pdf: 'PDF' }
+
+/** Visual theme palettes — mirrors backend doc_render.THEMES. 'auto' lets the agent pick. */
+const THEMES: { value: DocTheme; label: string; swatch: string }[] = [
+  { value: 'auto', label: 'Auto', swatch: 'linear-gradient(135deg, #06b6d4, #7c3aed)' },
+  { value: 'indigo', label: 'Indigo', swatch: '#4F46E5' },
+  { value: 'emerald', label: 'Emerald', swatch: '#059669' },
+  { value: 'amber', label: 'Amber', swatch: '#D97706' },
+  { value: 'violet', label: 'Violet', swatch: '#7C3AED' },
+  { value: 'slate', label: 'Slate', swatch: '#334155' },
+]
+/** Resolved (non-auto) palette colors, for the per-card theme dot. */
+const THEME_HEX: Record<string, string> = {
+  indigo: '#4F46E5',
+  emerald: '#059669',
+  amber: '#D97706',
+  violet: '#7C3AED',
+  slate: '#334155',
+}
+
+/** Compact in-card preview of a section's table (header + first rows). */
+function MiniTable({ table }: { table: DocTable }) {
+  const headers = table.headers.length ? table.headers : table.rows[0]?.map(() => '') ?? []
+  const rows = table.rows.slice(0, 3)
+  if (!headers.length && !rows.length) return null
+  return (
+    <div className="mt-1.5 overflow-hidden rounded border border-white/[0.08]">
+      <table className="w-full border-collapse text-[10px]">
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th key={i} className="border-b border-white/[0.08] bg-white/[0.05] px-1.5 py-1 text-left font-semibold text-[#d4d4d8]">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri}>
+              {r.map((c, ci) => (
+                <td key={ci} className="border-b border-white/[0.04] px-1.5 py-1 text-[#a1a1aa]">
+                  {c}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {table.rows.length > 3 && (
+        <p className="px-1.5 py-0.5 text-[10px] text-[#71717a]">+{table.rows.length - 3} more rows</p>
+      )}
+    </div>
+  )
+}
 
 const STATUS_TONE: Record<string, BadgeTone> = {
   generating: 'info',
@@ -67,7 +122,19 @@ function DocumentCard({
             {STATUS_LABEL[draft.status] ?? draft.status}
           </NeonBadge>
         </div>
-        <Chip label={FORMAT_LABEL[draft.format] ?? draft.format.toUpperCase()} accent="blue" />
+        <div className="flex items-center gap-2">
+          {/* The 'generating' placeholder theme is provisional (the agent may pick another), so
+              only show the palette dot once the draft is terminal. */}
+          {draft.status !== 'generating' && draft.theme && THEME_HEX[draft.theme] && (
+            <span
+              className="h-3 w-3 rounded-full ring-1 ring-white/20"
+              style={{ background: THEME_HEX[draft.theme] }}
+              title={`${draft.theme} theme`}
+              aria-label={`${draft.theme} theme`}
+            />
+          )}
+          <Chip label={FORMAT_LABEL[draft.format] ?? draft.format.toUpperCase()} accent="blue" />
+        </div>
       </div>
 
       <div>
@@ -90,13 +157,29 @@ function DocumentCard({
         </div>
       )}
 
-      {/* Content preview — section headings + first lines of body */}
+      {/* Content preview — section headings, body, bullets + a mini table */}
       {draft.sections.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+        <div className="flex flex-col gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
           {draft.sections.map((s, i) => (
             <div key={`${s.heading}|${i}`} className="text-xs">
               <p className="font-medium text-omnivra-cyan">{s.heading}</p>
               {s.body && <p className="mt-0.5 line-clamp-2 text-[#a1a1aa]">{s.body}</p>}
+              {s.bullets && s.bullets.length > 0 && (
+                <ul className="mt-1 space-y-0.5">
+                  {s.bullets.slice(0, 4).map((b, bi) => (
+                    <li key={bi} className="flex gap-1.5 text-[#a1a1aa]">
+                      <span className="text-omnivra-cyan" aria-hidden>
+                        •
+                      </span>
+                      <span className="line-clamp-1">{b}</span>
+                    </li>
+                  ))}
+                  {s.bullets.length > 4 && (
+                    <li className="text-[10px] text-[#71717a]">+{s.bullets.length - 4} more</li>
+                  )}
+                </ul>
+              )}
+              {s.table && <MiniTable table={s.table} />}
             </div>
           ))}
         </div>
@@ -161,6 +244,7 @@ function DocumentCard({
 export function DocumentStudio() {
   const [prompt, setPrompt] = useState('')
   const [format, setFormat] = useState<DocFormat>('pdf')
+  const [theme, setTheme] = useState<DocTheme>('auto')
 
   const { data: documents } = useDocuments()
   const generate = useGenerateDocument()
@@ -174,7 +258,7 @@ export function DocumentStudio() {
     e.preventDefault()
     const p = prompt.trim()
     if (!p || generating) return
-    generate.mutate({ prompt: p, format }, { onSuccess: () => setPrompt('') })
+    generate.mutate({ prompt: p, format, theme }, { onSuccess: () => setPrompt('') })
   }
 
   const onDecide = (id: string, action: 'approve' | 'reject') => decide.mutate({ id, decision: { action } })
@@ -212,6 +296,28 @@ export function DocumentStudio() {
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden />
                     {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Style picker — colored swatches drive the rendered document's palette */}
+              <div className="inline-flex items-center gap-1.5" role="group" aria-label="Document style">
+                <Palette className="h-3.5 w-3.5 text-[#71717a]" aria-hidden />
+                {THEMES.map(({ value, label, swatch }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    title={label}
+                    aria-label={`Style: ${label}`}
+                    aria-pressed={theme === value}
+                    onClick={() => setTheme(value)}
+                    className={cn(
+                      'focus-ring grid h-6 w-6 place-items-center rounded-full border transition-all duration-200',
+                      theme === value ? 'border-white ring-2 ring-omnivra-cyan/50' : 'border-white/15 hover:border-white/40',
+                    )}
+                    style={{ background: swatch }}
+                  >
+                    {value === 'auto' && <span className="text-[8px] font-bold text-white">A</span>}
                   </button>
                 ))}
               </div>

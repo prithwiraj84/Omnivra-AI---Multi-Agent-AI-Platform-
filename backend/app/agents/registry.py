@@ -99,10 +99,10 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["short-form scripting", "reel automation"]),
         # Documentation
         AgentSpec(id="documentation-agent", name="Documentation Agent", department=Department.DOCUMENTATION,
-                  provider="openrouter", model="google/gemma-4-31b-it:free",
+                  provider="groq", model="llama-3.3-70b-versatile",
                   responsibilities=["docs", "READMEs", "guides"]),
         AgentSpec(id="presentation-designer", name="Presentation Designer", department=Department.DOCUMENTATION,
-                  provider="openrouter", model="google/gemma-4-31b-it:free",
+                  provider="groq", model="llama-3.3-70b-versatile",
                   responsibilities=["slide decks", "presentation export"]),
         # Recovery
         AgentSpec(id="recovery-agent", name="Recovery Agent", department=Department.RECOVERY,

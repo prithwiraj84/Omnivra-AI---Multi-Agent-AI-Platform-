@@ -12,11 +12,26 @@ from typing import Literal
 from app.schemas.dashboard import CamelModel
 
 DocFormat = Literal["pptx", "docx", "pdf"]
+# Named visual themes the renderer styles with. "auto" lets the documentation agent
+# pick one; anything else (or an unknown value) resolves to the default palette.
+DocTheme = Literal["auto", "indigo", "emerald", "amber", "violet", "slate"]
+
+
+class DocTable(CamelModel):
+    """A simple tabular block: a header row + data rows (rendered as a styled table)."""
+
+    headers: list[str] = []
+    rows: list[list[str]] = []
 
 
 class DocSection(CamelModel):
+    """One section of a document. Beyond prose ``body`` it may carry a ``bullets`` list
+    and/or a ``table`` so the renderer can lay out lists and tabular data (not just text)."""
+
     heading: str
     body: str = ""
+    bullets: list[str] = []
+    table: DocTable | None = None
 
 
 class DocumentDraft(CamelModel):
@@ -27,6 +42,8 @@ class DocumentDraft(CamelModel):
     prompt: str
     format: DocFormat
     title: str
+    subtitle: str = ""  # cover subtitle / tagline (rendered on the title slide/page)
+    theme: str = "indigo"  # resolved visual theme name (drives colors/banners/table styling)
     status: str = "awaiting_approval"  # awaiting_approval | approved | rejected
     sections: list[DocSection] = []
     artifacts: list[str] = []  # workspace-relative paths (the rendered file + content.json)
@@ -40,6 +57,7 @@ class DocumentDraft(CamelModel):
 class DocumentRequest(CamelModel):
     prompt: str
     format: DocFormat = "pdf"
+    theme: DocTheme = "auto"  # "auto" -> the agent chooses; otherwise force this palette
 
 
 class DocumentDecision(CamelModel):

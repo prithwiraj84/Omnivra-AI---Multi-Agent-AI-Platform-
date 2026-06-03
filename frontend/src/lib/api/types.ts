@@ -317,11 +317,21 @@ export interface SocialProgressEvent {
 
 export type DocFormat = 'pptx' | 'docx' | 'pdf'
 export type DocStatus = 'generating' | 'awaiting_approval' | 'approved' | 'rejected'
+/** Visual theme. 'auto' lets the documentation agent pick; the rest force a palette. */
+export type DocTheme = 'auto' | 'indigo' | 'emerald' | 'amber' | 'violet' | 'slate'
 
-/** One heading + body block of a generated document. */
+/** A simple tabular block: a header row + data rows (rendered as a styled table). */
+export interface DocTable {
+  headers: string[]
+  rows: string[][]
+}
+
+/** One section of a generated document: prose + optional bullet list + optional table. */
 export interface DocSection {
   heading: string
   body: string
+  bullets?: string[]
+  table?: DocTable | null
 }
 
 /**
@@ -336,6 +346,8 @@ export interface DocumentDraft {
   prompt: string
   format: DocFormat
   title: string
+  subtitle?: string
+  theme?: string // resolved palette name (indigo | emerald | amber | violet | slate)
   status: DocStatus
   sections: DocSection[]
   artifacts: string[]
@@ -350,6 +362,7 @@ export interface DocumentDraft {
 export interface DocumentRequest {
   prompt: string
   format: DocFormat
+  theme?: DocTheme
 }
 
 /** Request body for POST /api/documents/{id}/decision. */

@@ -131,18 +131,123 @@ def test_render_document_disabled_returns_stub(tmp_path) -> None:
     assert result["ok"] and result["stub"] and not out.exists()
 
 
+# --- Content parsing: full + truncated recovery (the 'half-completed document' fix) ---
+def test_parse_full_json_document() -> None:
+    from app.services.documents import DocumentService
+
+    text = '{"title":"T","subtitle":"S","theme":"violet","sections":[{"heading":"H","body":"B","bullets":["x","y"]}]}'
+    parsed = DocumentService._parse(text)
+    assert parsed is not None
+    title, subtitle, theme, sections = parsed
+    assert (title, subtitle, theme) == ("T", "S", "violet")
+    assert sections[0].bullets == ["x", "y"]
+
+
+def test_parse_recovers_complete_sections_from_truncated_json() -> None:
+    """A response cut off mid-document must still yield every COMPLETE section (not collapse to the
+    tiny fallback). This is the core fix for half-completed documents."""
+    from app.services.documents import DocumentService
+
+    truncated = (
+        '{"title": "Quarterly Plan", "subtitle": "FY26", "theme": "emerald", "sections": ['
+        '{"heading": "Overview", "body": "Full first section.", "bullets": ["a", "b"]},'
+        '{"heading": "Roadmap", "body": "Second section complete.", '
+        '"table": {"headers": ["Phase","When"], "rows": [["1","Q1"],["2","Q2"]]}},'
+        '{"heading": "Truncat'  # <-- the response was cut off here (no close)
+    )
+    parsed = DocumentService._parse(truncated)
+    assert parsed is not None
+    title, subtitle, theme, sections = parsed
+    assert (title, subtitle, theme) == ("Quarterly Plan", "FY26", "emerald")
+    assert [s.heading for s in sections] == ["Overview", "Roadmap"]  # the cut-off 3rd is dropped
+    assert sections[1].table is not None and sections[1].table.headers == ["Phase", "When"]
+
+
+def test_fallback_is_an_honest_notice_not_fabricated_content() -> None:
+    """When the model returns nothing, the fallback must be an HONEST, on-topic notice — titled by
+    the prompt, clearly stating content could not be generated, and with NO fabricated table/filler
+    (the user complained the old scaffold served irrelevant boilerplate + a forced table)."""
+    from app.services.documents import DocumentService
+
+    title, subtitle, sections = DocumentService._fallback("Full documentation on how to use GitHub CI/CD")
+    assert title.startswith("Full documentation on how to use GitHub CI/CD")  # on-topic title
+    assert len(sections) == 1
+    assert "could not" in sections[0].body.lower()  # plainly says it failed
+    assert all(s.table is None for s in sections)  # never invents a table in the fallback
+
+
+def test_latin1_transliterates_unicode_punctuation_for_pdf() -> None:
+    """PDF latin-1 sanitization must transliterate smart punctuation to ASCII (not '?')."""
+    from app.services.doc_render import _latin1
+
+    out = _latin1("Scope creep — “quoted” café… bullet • arrow →")
+    assert "—" not in out and "“" not in out and "•" not in out
+    assert "?" not in out.replace("café", "")  # the accented é is latin-1-safe; no '?' from punctuation
+    assert "-" in out and '"quoted"' in out and "..." in out and "->" in out
+
+
+_RICH_SECTIONS = [
+    {"heading": "Section 1", "body": "Body text.", "bullets": ["First point", "Second point ✓", "Third"]},
+    {"heading": "Comparison", "body": "A small table.",
+     "table": {"headers": ["Plan", "Price", "Notes"], "rows": [["Free", "$0", "Starter"], ["Pro", "$20", "Teams"]]}},
+]
+
+
 @pytest.mark.parametrize("fmt", ["pptx", "docx", "pdf"])
 def test_real_render_produces_file(tmp_path, monkeypatch, fmt: str) -> None:
-    """When the optional lib is installed, render a real file (bypassing the disable flag)."""
+    """When the optional lib is installed, render a real, styled file (bullets + table + theme),
+    bypassing the disable flag."""
     if not _engine_installed(fmt):
         pytest.skip(f"{_FMT_MODULE[fmt]} not installed")
     monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
     out = tmp_path / f"doc.{fmt}"
     result = render_document(
         "Title ✓ unicode",  # exercises the latin-1 sanitizer for pdf
-        [{"heading": "Section 1", "body": "Body text."}, {"heading": "Section 2", "body": "More."}],
+        _RICH_SECTIONS,
         out,
         fmt,
+        subtitle="A styled subtitle ✓",
+        theme="emerald",
     )
     assert result["ok"] and not result["stub"], result
     assert out.exists() and out.stat().st_size > 100
+
+
+def test_unknown_theme_falls_back_without_error(tmp_path, monkeypatch) -> None:
+    """An unknown theme name must resolve to the default palette, never raise."""
+    if not _engine_installed("pdf"):
+        pytest.skip("fpdf not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "doc.pdf"
+    result = render_document("T", _RICH_SECTIONS, out, "pdf", theme="not-a-real-theme")
+    assert result["ok"] and not result["stub"] and out.exists()
+
+
+@pytest.mark.parametrize("fmt", ["pptx", "docx", "pdf"])
+def test_degenerate_table_does_not_break_render(tmp_path, monkeypatch, fmt: str) -> None:
+    """A malformed all-empty table ({headers:[], rows:[[],[]]}) must NOT crash any renderer
+    (regression: it once raised ZeroDivisionError in PPTX -> whole deck degraded to markdown)."""
+    if not _engine_installed(fmt):
+        pytest.skip(f"{_FMT_MODULE[fmt]} not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / f"doc.{fmt}"
+    sections = [{"heading": "Bad table", "body": "x", "table": {"headers": [], "rows": [[], []]}}]
+    result = render_document("T", sections, out, fmt)
+    assert result["ok"] and not result["stub"], result
+    assert out.exists()
+
+
+def test_pptx_has_entrance_animations(tmp_path, monkeypatch) -> None:
+    """Content-bearing slides must carry an injected <p:timing> entrance animation tree."""
+    if not _engine_installed("pptx"):
+        pytest.skip("pptx not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "deck.pptx"
+    assert render_document("Deck", _RICH_SECTIONS, out, "pptx", subtitle="Sub", theme="violet")["ok"]
+
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+
+    prs = Presentation(str(out))
+    animated = [s for s in prs.slides if s._element.find(qn("p:timing")) is not None]
+    assert animated, "expected at least one slide with an entrance-animation <p:timing> tree"

@@ -9,20 +9,34 @@ deterministic builder so it runs fully offline.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.agents.runner import run_agent
 from app.core.logging import logger
 from app.providers.registry import get_provider_registry
-from app.schemas.documents import DocSection, DocumentDraft
+from app.schemas.documents import DocSection, DocTable, DocumentDraft
 from app.services.artifacts import get_artifact_service
-from app.services.doc_render import render_document
+from app.services.doc_render import THEMES, render_document
 from app.services.realtime import emit
 from app.services.document_store import get_document_store
 from app.workspace_fs.paths import project_root, safe_project_id
 
 _EXT = {"pptx": "pptx", "docx": "docx", "pdf": "pdf"}
+_DEFAULT_THEME = "indigo"
+
+
+def _resolve_theme(requested: str | None, suggested: str | None = None) -> str:
+    """Pick the visual theme: an explicit (non-'auto') request wins; else the agent's
+    suggestion; else the default. Always returns a known palette name."""
+    req = (requested or "").strip().lower()
+    if req and req != "auto" and req in THEMES:
+        return req
+    sug = (suggested or "").strip().lower()
+    if sug in THEMES:
+        return sug
+    return _DEFAULT_THEME
 
 
 def _now() -> str:
@@ -30,7 +44,7 @@ def _now() -> str:
 
 
 class DocumentService:
-    def begin_document(self, prompt: str, fmt: str, project_id: str | None) -> DocumentDraft:
+    def begin_document(self, prompt: str, fmt: str, theme: str, project_id: str | None) -> DocumentDraft:
         """Persist a 'generating' placeholder + return it IMMEDIATELY (fire-and-poll).
 
         The model write + render (which can take many seconds — well past the UI request timeout
@@ -43,13 +57,13 @@ class DocumentService:
         doc_id = "doc_" + uuid4().hex[:12]
         draft = DocumentDraft(
             id=doc_id, project_id=pid, prompt=prompt, format=fmt, title="Generating…",
-            status="generating", sections=[], artifacts=[], file_path=None, stub=False,
-            render_note=None, created_at=_now(),
+            subtitle="", theme=_resolve_theme(theme), status="generating", sections=[], artifacts=[],
+            file_path=None, stub=False, render_note=None, created_at=_now(),
         )
         get_document_store(pid).save(draft)
         return draft
 
-    async def generate_document(self, doc_id: str, prompt: str, fmt: str, project_id: str | None) -> None:
+    async def generate_document(self, doc_id: str, prompt: str, fmt: str, theme: str, project_id: str | None) -> None:
         """Background job: write the content (Gemma) + render the file, then move the draft to
         'awaiting_approval'. Never raises — on any error the draft still reaches a terminal state
         (so the UI poll never spins forever)."""
@@ -58,33 +72,38 @@ class DocumentService:
         store = get_document_store(pid)
         existing = store.get(doc_id)
         created_at = existing.created_at if existing else _now()  # keep stable list ordering
+        written: list[str] = []  # files actually written so far — so the except-branch keeps them (no orphans)
         try:
-            title, sections = await self._build_content(prompt)
+            title, subtitle, resolved_theme, sections, content_note = await self._build_content(prompt, theme)
 
             base = f"reports/documents/{doc_id}"
             fm = get_artifact_service(pid).fm
-            artifacts: list[str] = [
-                fm.write_text(f"{base}/content.json", json.dumps({"title": title, "sections": [s.model_dump() for s in sections]}, indent=2), agent_id="documentation-agent").rel_path,
-            ]
+            content_json = {"title": title, "subtitle": subtitle, "theme": resolved_theme, "sections": [s.model_dump() for s in sections]}
+            written.append(fm.write_text(f"{base}/content.json", json.dumps(content_json, indent=2), agent_id="documentation-agent").rel_path)
 
             # Render the real file (or fall back to a markdown deliverable).
             out_rel = f"{base}/document.{_EXT[fmt]}"
-            result = render_document(title, [s.model_dump() for s in sections], project_root(pid) / out_rel, fmt)
+            result = render_document(
+                title, [s.model_dump() for s in sections], project_root(pid) / out_rel, fmt,
+                subtitle=subtitle, theme=resolved_theme,
+            )
             if result.get("ok") and not result.get("stub"):
                 file_path: str | None = out_rel
                 stub = False
-                artifacts.append(out_rel)
+                written.append(out_rel)
             else:
                 md_rel = f"{base}/document.md"
-                fm.write_text(md_rel, self._markdown(title, sections), agent_id="documentation-agent")
-                artifacts.append(md_rel)
+                fm.write_text(md_rel, self._markdown(title, subtitle, sections), agent_id="documentation-agent")
+                written.append(md_rel)
                 file_path = md_rel
                 stub = True
 
+            # Surface the content-fallback notice (if any) ahead of the render-engine note.
+            render_note = " ".join(n for n in (content_note, result.get("note")) if n) or None
             store.save(DocumentDraft(
-                id=doc_id, project_id=pid, prompt=prompt, format=fmt, title=title,
-                status="awaiting_approval", sections=sections, artifacts=artifacts,
-                file_path=file_path, stub=stub, render_note=result.get("note"), created_at=created_at,
+                id=doc_id, project_id=pid, prompt=prompt, format=fmt, title=title, subtitle=subtitle,
+                theme=resolved_theme, status="awaiting_approval", sections=sections, artifacts=written,
+                file_path=file_path, stub=stub, render_note=render_note, created_at=created_at,
             ))
             await emit("approval", {"approvalId": doc_id, "title": "Document approval required", "kind": "document_publish", "requestedBy": "documentation-agent", "priority": "medium"})
         except Exception as exc:  # noqa: BLE001 - reach a terminal state, never leave it 'generating'
@@ -92,56 +111,216 @@ class DocumentService:
             try:  # the terminal save itself must not raise out of the BackgroundTask (would orphan 'generating')
                 store.save(DocumentDraft(
                     id=doc_id, project_id=pid, prompt=prompt, format=fmt,
-                    title=(prompt.strip()[:80] or "Document"), status="awaiting_approval",
-                    sections=[], artifacts=existing.artifacts if existing else [], file_path=None, stub=True,
-                    render_note=f"Generation error: {type(exc).__name__}", created_at=created_at,
+                    title=(prompt.strip()[:80] or "Document"), subtitle="", theme=_resolve_theme(theme),
+                    status="awaiting_approval", sections=[],
+                    artifacts=written or (existing.artifacts if existing else []),
+                    file_path=None, stub=True, render_note=f"Generation error: {type(exc).__name__}", created_at=created_at,
                 ))
             except Exception:  # noqa: BLE001 - last resort; nothing more we can do but log
                 logger.error("terminal save for document {} also failed", doc_id)
 
-    async def _build_content(self, prompt: str) -> tuple[str, list[DocSection]]:
+    async def _build_content(self, prompt: str, theme: str) -> tuple[str, str, str, list[DocSection], str | None]:
+        """Return (title, subtitle, theme, sections, fallback_note). fallback_note is None when the
+        model wrote real content; otherwise it explains why this is a placeholder (so the caller can
+        surface it instead of silently serving generic boilerplate)."""
         ask = (
-            "Write a structured document for this request. Respond ONLY with JSON of the form "
-            '{"title","sections":[{"heading","body"}]} with 3-6 sections. '
+            "Write COMPLETE, professional documentation that DIRECTLY answers the request below. "
+            "Respond with ONLY valid JSON (no markdown, no code fences, no commentary) in exactly this shape:\n"
+            '{"title": str, "subtitle": str, "theme": one of ["indigo","emerald","amber","violet","slate"], '
+            '"sections": [{"heading": str, "body": str, "bullets": [str], "table": {"headers": [str], "rows": [[str]]}}]}\n'
+            "Rules:\n"
+            "- Stay STRICTLY on the requested topic. Write the actual content the user asked for — concrete, "
+            "specific, and accurate (real steps, commands, examples as appropriate). Do NOT add generic filler, "
+            "meta-commentary, or sections unrelated to the request.\n"
+            "- Use as many sections as the topic genuinely needs (usually 4-9); each `body` is a complete paragraph "
+            "of real sentences — no placeholders, no 'TODO', no '...'.\n"
+            "- `bullets`: include ONLY where a list is the natural format; otherwise use [].\n"
+            "- `table`: include ONLY when the content is genuinely tabular (e.g. option/flag references, "
+            "comparisons, config keys, metrics). MOST sections need NO table — never invent one to fill space; "
+            "use [] / omit it when not needed.\n"
+            "- Pick a `theme` that fits the topic. Output the ENTIRE JSON and close every brace and bracket.\n"
             f"Request: {prompt}"
         )
-        out = await run_agent("documentation-agent", ask, registry=get_provider_registry(), max_tokens=900)
+        # Generous budget so a full doc fits; truncated JSON is still recovered by _parse.
+        out = await run_agent("documentation-agent", ask, registry=get_provider_registry(), max_tokens=4096)
         if out.get("ok"):
             parsed = self._parse(out.get("content", ""))
             if parsed:
-                return parsed
-        return self._fallback(prompt)
+                title, subtitle, suggested, sections = parsed
+                return title, subtitle, _resolve_theme(theme, suggested), sections, None
+        # The model produced nothing usable (no/expired key, rate limit, or unparseable output).
+        # Return an HONEST notice — never fabricate topic content that misleads the user.
+        title, subtitle, sections = self._fallback(prompt)
+        note = (
+            "The documentation AI did not return content, so this is a placeholder notice — not generated "
+            "documentation. The model is likely rate-limited or its free daily quota is exhausted; try again "
+            "later or switch the document model in Settings."
+        )
+        return title, subtitle, _resolve_theme(theme), sections, note
 
     @staticmethod
-    def _parse(text: str) -> tuple[str, list[DocSection]] | None:
-        try:
-            data = json.loads(text[text.index("{") : text.rindex("}") + 1])
-            title = str(data.get("title", "")).strip()
-            sections = [
-                DocSection(heading=str(s.get("heading", "")).strip(), body=str(s.get("body", "")).strip())
-                for s in data.get("sections", [])
-                if str(s.get("heading", "")).strip()
-            ]
-            return (title, sections) if title and sections else None
-        except Exception:  # noqa: BLE001
+    def _parse(text: str) -> tuple[str, str, str, list[DocSection]] | None:
+        data = DocumentService._loads_document(text)
+        if not data:
             return None
+        title = str(data.get("title", "")).strip()
+        subtitle = str(data.get("subtitle", "")).strip()
+        suggested = str(data.get("theme", "")).strip()
+        raw_sections = data.get("sections", [])
+        if not isinstance(raw_sections, list):  # guard a malformed (non-list) sections value
+            raw_sections = []
+        sections: list[DocSection] = []
+        for s in raw_sections:
+            if not isinstance(s, dict):
+                continue
+            heading = str(s.get("heading", "")).strip()
+            if not heading:
+                continue
+            bullets = [str(b).strip() for b in (s.get("bullets") or []) if str(b).strip()]
+            sections.append(DocSection(
+                heading=heading,
+                body=str(s.get("body", "")).strip(),
+                bullets=bullets,
+                table=DocumentService._parse_table(s.get("table")),
+            ))
+        return (title, subtitle, suggested, sections) if title and sections else None
 
     @staticmethod
-    def _fallback(prompt: str) -> tuple[str, list[DocSection]]:
-        title = prompt.strip()[:80] or "Untitled Document"
+    def _loads_document(text: str) -> dict | None:
+        """Parse the model's JSON document. If the response is TRUNCATED (a long doc that ran past
+        the token budget), salvage the head fields + every COMPLETE section object — so a cut-off
+        response still yields a full document instead of collapsing to the tiny fallback."""
+        if not text or "{" not in text:
+            return None
+        body = text[text.index("{"):]
+        try:  # fast path: a well-formed, complete response
+            return json.loads(body[: body.rindex("}") + 1])
+        except Exception:  # noqa: BLE001 - truncated / trailing prose -> lenient recovery below
+            pass
+        title = DocumentService._scalar(body, "title")
+        if not title:
+            return None
+        sections: list = []
+        sidx = body.find('"sections"')
+        if sidx != -1:
+            lb = body.find("[", sidx)
+            if lb != -1:
+                sections = DocumentService._extract_objects(body[lb + 1:])
+        return {
+            "title": title,
+            "subtitle": DocumentService._scalar(body, "subtitle"),
+            "theme": DocumentService._scalar(body, "theme"),
+            "sections": sections,
+        }
+
+    @staticmethod
+    def _scalar(text: str, key: str) -> str:
+        """Pull a top-level string field's value out of (possibly truncated) JSON, unescaped."""
+        m = re.search(r'"' + re.escape(key) + r'"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+        if not m:
+            return ""
+        try:
+            return json.loads('"' + m.group(1) + '"')  # unescape \n, \" etc.
+        except Exception:  # noqa: BLE001
+            return m.group(1)
+
+    @staticmethod
+    def _extract_objects(s: str) -> list[dict]:
+        """Extract each COMPLETE top-level {...} object from a (maybe truncated) JSON array body,
+        parsing them individually. A trailing incomplete object is simply skipped (not appended)."""
+        objs: list[dict] = []
+        depth = 0
+        start: int | None = None
+        in_str = False
+        esc = False
+        for i, ch in enumerate(s):
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == "}":
+                if depth > 0:
+                    depth -= 1
+                    if depth == 0 and start is not None:
+                        try:
+                            obj = json.loads(s[start : i + 1])
+                            if isinstance(obj, dict):
+                                objs.append(obj)
+                        except Exception:  # noqa: BLE001 - skip a malformed object
+                            pass
+                        start = None
+            elif ch == "]" and depth == 0:
+                break  # end of the sections array
+        return objs
+
+    @staticmethod
+    def _parse_table(raw: object) -> DocTable | None:
+        """Coerce a model-emitted table into a DocTable, or None if there's nothing tabular."""
+        if not isinstance(raw, dict):
+            return None
+        headers = [str(h).strip() for h in (raw.get("headers") or [])]
+        rows = [[str(c).strip() for c in row] for row in (raw.get("rows") or []) if isinstance(row, (list, tuple))]
+        rows = [r for r in rows if any(c for c in r)]  # drop fully-empty rows (no tabular content)
+        if not headers and not rows:  # nothing tabular left -> not a table
+            return None
+        return DocTable(headers=headers, rows=rows)
+
+    @staticmethod
+    def _fallback(prompt: str) -> tuple[str, str, list[DocSection]]:
+        """HONEST placeholder used ONLY when the documentation model returns nothing usable (no key /
+        rate-limited / unparseable). It does NOT fabricate topic content (which would be irrelevant to
+        the request) and adds NO table — it plainly says the content could not be generated and why,
+        titled by the user's request so the draft stays on-topic."""
+        topic = (prompt.strip()[:120] or "your request")
+        title = prompt.strip()[:80] or "Document"
         sections = [
-            DocSection(heading="Overview", body=f"This document covers: {prompt.strip()}."),
-            DocSection(heading="Key Points", body="Generated by the Omnivra documentation agent. Provider keys enable richer, model-written content."),
-            DocSection(heading="Details", body="Replace this with the model's output once a provider key is configured."),
-            DocSection(heading="Next Steps", body="Review and approve this draft, then download it in the chosen format."),
+            DocSection(
+                heading="Content could not be generated",
+                body=(
+                    f'Omnivra could not generate the document for "{topic}" because the documentation AI model '
+                    "did not return any content. This is a temporary provider issue rather than a problem with "
+                    "your request, and no topic content was written for this draft."
+                ),
+                bullets=[
+                    "Most often the configured model is rate-limited or its free daily quota is exhausted",
+                    "Try again in a few minutes, or switch the document model in Settings to an available provider",
+                    "Your prompt and chosen format were saved, so regenerating will reuse them",
+                ],
+            ),
         ]
-        return title, sections
+        return title, "Draft could not be completed", sections
 
     @staticmethod
-    def _markdown(title: str, sections: list[DocSection]) -> str:
+    def _markdown(title: str, subtitle: str, sections: list[DocSection]) -> str:
         lines = [f"# {title}", ""]
+        if subtitle:
+            lines += [f"_{subtitle}_", ""]
         for s in sections:
-            lines += [f"## {s.heading}", "", s.body, ""]
+            lines += [f"## {s.heading}", ""]
+            if s.body:
+                lines += [s.body, ""]
+            for b in s.bullets:
+                lines.append(f"- {b}")
+            if s.bullets:
+                lines.append("")
+            if s.table and (s.table.headers or s.table.rows):
+                headers = s.table.headers or [""] * (max((len(r) for r in s.table.rows), default=1))
+                lines.append("| " + " | ".join(headers) + " |")
+                lines.append("| " + " | ".join("---" for _ in headers) + " |")
+                for row in s.table.rows:
+                    padded = (row + [""] * len(headers))[: len(headers)]
+                    lines.append("| " + " | ".join(padded) + " |")
+                lines.append("")
         lines += ["---", "_Install the render engine (pip install -r requirements-docs.txt) for a real PPTX/DOCX/PDF._"]
         return "\n".join(lines)
 
