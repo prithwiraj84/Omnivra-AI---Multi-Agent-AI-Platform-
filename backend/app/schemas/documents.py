@@ -14,7 +14,11 @@ from app.schemas.dashboard import CamelModel
 DocFormat = Literal["pptx", "docx", "pdf"]
 # Named visual themes the renderer styles with. "auto" lets the documentation agent
 # pick one; anything else (or an unknown value) resolves to the default palette.
-DocTheme = Literal["auto", "indigo", "emerald", "amber", "violet", "slate"]
+DocTheme = Literal[
+    "auto", "indigo", "emerald", "amber", "violet", "slate",
+    "crimson", "teal", "ocean", "sunset", "forest", "midnight", "rose",
+]
+ChartType = Literal["column", "bar", "line", "pie", "area"]
 
 
 class DocTable(CamelModel):
@@ -24,14 +28,31 @@ class DocTable(CamelModel):
     rows: list[list[str]] = []
 
 
+class DocSeries(CamelModel):
+    """One data series of a chart: a name + numeric values aligned to the chart's categories."""
+
+    name: str = ""
+    values: list[float] = []
+
+
+class DocChart(CamelModel):
+    """A chart/graph spec the renderer draws natively in PPTX (and as a data table in DOCX/PDF)."""
+
+    type: ChartType = "column"
+    title: str = ""
+    categories: list[str] = []
+    series: list[DocSeries] = []
+
+
 class DocSection(CamelModel):
-    """One section of a document. Beyond prose ``body`` it may carry a ``bullets`` list
-    and/or a ``table`` so the renderer can lay out lists and tabular data (not just text)."""
+    """One section of a document. Beyond prose ``body`` it may carry a ``bullets`` list, a
+    ``table`` for tabular data, and/or a ``chart`` for data shown as a graph."""
 
     heading: str
     body: str = ""
     bullets: list[str] = []
     table: DocTable | None = None
+    chart: DocChart | None = None
 
 
 class DocumentDraft(CamelModel):

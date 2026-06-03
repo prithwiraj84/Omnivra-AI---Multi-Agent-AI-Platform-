@@ -237,6 +237,157 @@ def test_degenerate_table_does_not_break_render(tmp_path, monkeypatch, fmt: str)
     assert out.exists()
 
 
+_CHART_SECTIONS = [
+    {"heading": "Trend", "body": "Growth over the year.",
+     "chart": {"type": "column", "title": "Revenue ($k)", "categories": ["Q1", "Q2", "Q3"],
+               "series": [{"name": "2026", "values": [12, 19, 27]}]}},
+    {"heading": "Split", "body": "Breakdown.",
+     "chart": {"type": "pie", "title": "Share", "categories": ["A", "B"], "series": [{"name": "s", "values": [60, 40]}]}},
+]
+
+
+def test_pptx_renders_native_charts(tmp_path, monkeypatch) -> None:
+    """A section with a chart must produce a native PPTX chart shape (a real graph, not a table)."""
+    if not _engine_installed("pptx"):
+        pytest.skip("pptx not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "deck.pptx"
+    assert render_document("Charts", _CHART_SECTIONS, out, "pptx", theme="ocean")["ok"]
+    from pptx import Presentation
+
+    prs = Presentation(str(out))
+    charts = sum(1 for s in prs.slides for sh in s.shapes if sh.has_chart)
+    assert charts == 2, "expected a native chart on each chart-bearing slide"
+
+
+@pytest.mark.parametrize("fmt", ["docx", "pdf"])
+def test_chart_renders_as_table_in_documents(tmp_path, monkeypatch, fmt: str) -> None:
+    """DOCX/PDF have no native chart engine — a chart must render as a captioned data table (no crash)."""
+    if not _engine_installed(fmt):
+        pytest.skip(f"{_FMT_MODULE[fmt]} not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / f"doc.{fmt}"
+    assert render_document("Charts", _CHART_SECTIONS, out, fmt, theme="forest")["ok"]
+    assert out.exists() and out.stat().st_size > 100
+    if fmt == "docx":
+        from docx import Document
+
+        assert len(Document(str(out)).tables) == 2  # one data table per chart
+
+
+def test_norm_chart_coerces_and_drops_empty() -> None:
+    from app.services.doc_render import _norm_chart
+
+    ct = _norm_chart({"type": "bar", "categories": ["a", "b"], "series": [{"name": "x", "values": ["1,200", "$3"]}]})
+    assert ct is not None
+    ctype, _title, cats, series = ct
+    assert ctype == "bar" and cats == ["a", "b"] and series[0][1] == [1200.0, 3.0]
+    assert _norm_chart({"series": []}) is None  # no numeric data -> not a chart
+    assert _norm_chart("nope") is None
+
+
+def test_num_rejects_non_finite() -> None:
+    from app.services.doc_render import _num
+
+    assert _num("inf") == 0.0 and _num("nan") == 0.0 and _num("1e400") == 0.0  # never inf/nan
+    assert _num(float("inf")) == 0.0 and _num("12") == 12.0
+
+
+def test_parse_chart_drops_all_non_numeric_and_non_finite() -> None:
+    from app.services.documents import DocumentService
+
+    assert DocumentService._parse_chart({"series": [{"name": "s", "values": ["abc", "--"]}]}) is None
+    assert DocumentService._parse_chart({"series": [{"name": "s", "values": ["inf", "nan"]}]}) is None
+    ok = DocumentService._parse_chart({"categories": ["a"], "series": [{"name": "s", "values": ["5", "x"]}]})
+    assert ok is not None and ok.series[0].values == [5.0, 0.0]
+
+
+def test_norm_chart_collapses_multi_series_pie() -> None:
+    from app.services.doc_render import _norm_chart
+
+    ct = _norm_chart({"type": "pie", "categories": ["a", "b"],
+                      "series": [{"name": "one", "values": [1, 2]}, {"name": "two", "values": [3, 4]}]})
+    assert ct is not None and len(ct[3]) == 1  # pie kept to a single series so all formats agree
+
+
+def test_pptx_pie_uses_percentage_data_labels(tmp_path, monkeypatch) -> None:
+    """A pie's data labels must show computed slice SHARE (show_percentage), not raw values as '7000%'."""
+    if not _engine_installed("pptx"):
+        pytest.skip("pptx not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "pie.pptx"
+    sections = [{"heading": "Share", "chart": {"type": "pie", "title": "Split", "categories": ["A", "B", "C"],
+                                               "series": [{"name": "s", "values": [10, 20, 70]}]}}]
+    assert render_document("Pie", sections, out, "pptx", theme="rose")["ok"]
+    from pptx import Presentation
+
+    prs = Presentation(str(out))
+    pie = next(sh.chart for s in prs.slides for sh in s.shapes if sh.has_chart)
+    assert pie.plots[0].data_labels.show_percentage is True
+
+
+def test_pptx_busy_slide_chart_stays_on_slide(tmp_path, monkeypatch) -> None:
+    """A crowded slide (long body + many bullets + chart) must not push the chart off the 7.5in slide."""
+    if not _engine_installed("pptx"):
+        pytest.skip("pptx not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "busy.pptx"
+    sections = [{
+        "heading": "Crowded",
+        "body": "A long body paragraph. " * 30,
+        "bullets": [f"Bullet number {i} with a fair amount of descriptive text" for i in range(12)],
+        "chart": {"type": "column", "title": "Data", "categories": ["a", "b", "c"], "series": [{"name": "s", "values": [1, 2, 3]}]},
+    }]
+    assert render_document("Busy deck", sections, out, "pptx", theme="indigo")["ok"]
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    prs = Presentation(str(out))
+    slide_h = prs.slide_height
+    for s in prs.slides:
+        for sh in s.shapes:
+            if sh.has_chart and sh.top is not None and sh.height is not None:
+                assert sh.top + sh.height <= slide_h + Inches(0.1), "chart must stay within the slide"
+
+
+def test_pptx_renders_both_chart_and_distinct_table(tmp_path, monkeypatch) -> None:
+    """A section with BOTH a chart and a separate table keeps both in PPTX (parity with DOCX/PDF)."""
+    if not _engine_installed("pptx"):
+        pytest.skip("pptx not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / "both.pptx"
+    sections = [{
+        "heading": "Both",
+        "chart": {"type": "column", "categories": ["a", "b"], "series": [{"name": "s", "values": [1, 2]}]},
+        "table": {"headers": ["K", "V"], "rows": [["x", "1"], ["y", "2"]]},
+    }]
+    assert render_document("Both", sections, out, "pptx", theme="teal")["ok"]
+    from pptx import Presentation
+
+    prs = Presentation(str(out))
+    has_chart = any(sh.has_chart for s in prs.slides for sh in s.shapes)
+    has_table = any(sh.has_table for s in prs.slides for sh in s.shapes)
+    assert has_chart and has_table, "both the chart and the distinct table should render"
+
+
+def test_pick_style_is_deterministic_and_in_set() -> None:
+    from app.services.doc_render import STYLES, pick_style
+
+    assert pick_style("GitHub CI/CD") == pick_style("GitHub CI/CD")  # stable per title
+    assert pick_style("Quarterly Review") in STYLES
+
+
+def test_parse_extracts_chart() -> None:
+    from app.services.documents import DocumentService
+
+    text = ('{"title":"T","sections":[{"heading":"H","chart":{"type":"line","title":"Trend",'
+            '"categories":["Jan","Feb"],"series":[{"name":"users","values":[10,20]}]}}]}')
+    parsed = DocumentService._parse(text)
+    assert parsed is not None
+    chart = parsed[3][0].chart
+    assert chart is not None and chart.type == "line" and chart.series[0].values == [10.0, 20.0]
+
+
 def test_pptx_has_entrance_animations(tmp_path, monkeypatch) -> None:
     """Content-bearing slides must carry an injected <p:timing> entrance animation tree."""
     if not _engine_installed("pptx"):

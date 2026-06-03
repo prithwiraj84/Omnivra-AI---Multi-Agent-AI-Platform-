@@ -9,6 +9,7 @@ deterministic builder so it runs fully offline.
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -16,7 +17,7 @@ from uuid import uuid4
 from app.agents.runner import run_agent
 from app.core.logging import logger
 from app.providers.registry import get_provider_registry
-from app.schemas.documents import DocSection, DocTable, DocumentDraft
+from app.schemas.documents import DocChart, DocSection, DocSeries, DocTable, DocumentDraft
 from app.services.artifacts import get_artifact_service
 from app.services.doc_render import THEMES, render_document
 from app.services.realtime import emit
@@ -74,7 +75,7 @@ class DocumentService:
         created_at = existing.created_at if existing else _now()  # keep stable list ordering
         written: list[str] = []  # files actually written so far — so the except-branch keeps them (no orphans)
         try:
-            title, subtitle, resolved_theme, sections, content_note = await self._build_content(prompt, theme)
+            title, subtitle, resolved_theme, sections, content_note = await self._build_content(prompt, theme, fmt)
 
             base = f"reports/documents/{doc_id}"
             fm = get_artifact_service(pid).fm
@@ -119,26 +120,52 @@ class DocumentService:
             except Exception:  # noqa: BLE001 - last resort; nothing more we can do but log
                 logger.error("terminal save for document {} also failed", doc_id)
 
-    async def _build_content(self, prompt: str, theme: str) -> tuple[str, str, str, list[DocSection], str | None]:
+    async def _build_content(self, prompt: str, theme: str, fmt: str = "pdf") -> tuple[str, str, str, list[DocSection], str | None]:
         """Return (title, subtitle, theme, sections, fallback_note). fallback_note is None when the
         model wrote real content; otherwise it explains why this is a placeholder (so the caller can
-        surface it instead of silently serving generic boilerplate)."""
+        surface it instead of silently serving generic boilerplate). ``fmt`` tailors the guidance
+        (a deck wants concise, visual slides; a document allows richer prose)."""
+        if fmt == "pptx":
+            format_rule = (
+                "- This is a PRESENTATION (slides): keep each section to a punchy heading, a SHORT body line, and "
+                "3-5 concise bullets (a few words each, NOT paragraphs). Use a chart ONLY if the section genuinely "
+                "has numeric data; most slides need none."
+            )
+        else:
+            format_rule = (
+                "- This is a written document. Use complete paragraphs of real sentences for each `body`, with "
+                "bullets/tables/charts only where they genuinely add value."
+            )
         ask = (
             "Write COMPLETE, professional documentation that DIRECTLY answers the request below. "
             "Respond with ONLY valid JSON (no markdown, no code fences, no commentary) in exactly this shape:\n"
-            '{"title": str, "subtitle": str, "theme": one of ["indigo","emerald","amber","violet","slate"], '
-            '"sections": [{"heading": str, "body": str, "bullets": [str], "table": {"headers": [str], "rows": [[str]]}}]}\n'
+            '{"title": str, "subtitle": str, "theme": str, "sections": [{"heading": str, "body": str, '
+            '"bullets": [str], "table": {"headers": [str], "rows": [[str]]}, '
+            '"chart": {"type": "column|bar|line|pie|area", "title": str, "categories": [str], '
+            '"series": [{"name": str, "values": [number]}]}}]}\n'
             "Rules:\n"
             "- Stay STRICTLY on the requested topic. Write the actual content the user asked for — concrete, "
             "specific, and accurate (real steps, commands, examples as appropriate). Do NOT add generic filler, "
             "meta-commentary, or sections unrelated to the request.\n"
-            "- Use as many sections as the topic genuinely needs (usually 4-9); each `body` is a complete paragraph "
-            "of real sentences — no placeholders, no 'TODO', no '...'.\n"
+            "- Use as many sections as the topic genuinely needs (usually 4-9); no placeholders, no 'TODO', no '...'.\n"
+            f"{format_rule}\n"
+            "- DECIDE, per section, whether a table or chart is ACTUALLY warranted. MANY documents (guides, "
+            "how-tos, tutorials, essays, policies, conceptual or narrative topics) need NO tables and NO charts at "
+            "all — for those, write prose + bullets and OMIT table and chart entirely (use [] / leave them out). "
+            "NEVER add a table or chart for decoration, to look thorough, or to fill space. Default to NOT including "
+            "them; include one only when it conveys something prose/bullets genuinely cannot.\n"
             "- `bullets`: include ONLY where a list is the natural format; otherwise use [].\n"
-            "- `table`: include ONLY when the content is genuinely tabular (e.g. option/flag references, "
-            "comparisons, config keys, metrics). MOST sections need NO table — never invent one to fill space; "
-            "use [] / omit it when not needed.\n"
-            "- Pick a `theme` that fits the topic. Output the ENTIRE JSON and close every brace and bracket.\n"
+            "- `table`: include ONLY for genuinely tabular content (option/flag references, side-by-side "
+            "comparisons, config keys, schedules, specs). Omit it for everything else.\n"
+            "- `chart`: include ONLY when the section contains REAL quantitative data inherent to the topic "
+            "(measured trends, counts, percentages, comparisons). NEVER invent, estimate, or guess numbers just to "
+            "draw a chart — if the topic is qualitative/instructional, use NO chart. Pie for parts-of-a-whole, "
+            "line/area for trends, column/bar for comparisons. At most one chart per section.\n"
+            '- Pick a `theme` whose mood fits the topic from EXACTLY this list: ["indigo","emerald","amber",'
+            '"violet","slate","crimson","teal","ocean","sunset","forest","midnight","rose"] '
+            "(e.g. finance/corporate -> slate/ocean/midnight; growth/eco/health -> emerald/forest/teal; "
+            "marketing/creative -> sunset/violet/rose/crimson; technical -> indigo/teal/ocean).\n"
+            "- Output the ENTIRE JSON and close every brace and bracket.\n"
             f"Request: {prompt}"
         )
         # Generous budget so a full doc fits; truncated JSON is still recovered by _parse.
@@ -182,6 +209,7 @@ class DocumentService:
                 body=str(s.get("body", "")).strip(),
                 bullets=bullets,
                 table=DocumentService._parse_table(s.get("table")),
+                chart=DocumentService._parse_chart(s.get("chart")),
             ))
         return (title, subtitle, suggested, sections) if title and sections else None
 
@@ -276,6 +304,38 @@ class DocumentService:
         return DocTable(headers=headers, rows=rows)
 
     @staticmethod
+    def _parse_chart(raw: object) -> DocChart | None:
+        """Coerce a model-emitted chart into a DocChart, or None when there's no usable numeric data."""
+        if not isinstance(raw, dict):
+            return None
+        ctype = str(raw.get("type", "column")).strip().lower()
+        if ctype not in {"column", "bar", "line", "pie", "area"}:
+            ctype = "column"
+        categories = [str(c).strip() for c in (raw.get("categories") or [])]
+        series: list[DocSeries] = []
+        for s in (raw.get("series") or []):
+            if not isinstance(s, dict):
+                continue
+            values: list[float] = []
+            parsed_any = False  # require at least one genuinely-numeric value to keep the series
+            for v in (s.get("values") or []):
+                try:
+                    f = float(str(v).replace(",", "").replace("$", "").replace("%", ""))
+                except (TypeError, ValueError):
+                    values.append(0.0)
+                    continue
+                if math.isfinite(f):
+                    values.append(f)
+                    parsed_any = True
+                else:  # inf/nan would break the chart's worksheet writer
+                    values.append(0.0)
+            if values and parsed_any:
+                series.append(DocSeries(name=str(s.get("name", "")).strip(), values=values))
+        if not series:  # no genuinely-numeric data -> not a chart
+            return None
+        return DocChart(type=ctype, title=str(raw.get("title", "")).strip(), categories=categories, series=series)
+
+    @staticmethod
     def _fallback(prompt: str) -> tuple[str, str, list[DocSection]]:
         """HONEST placeholder used ONLY when the documentation model returns nothing usable (no key /
         rate-limited / unparseable). It does NOT fabricate topic content (which would be irrelevant to
@@ -320,6 +380,16 @@ class DocumentService:
                 for row in s.table.rows:
                     padded = (row + [""] * len(headers))[: len(headers)]
                     lines.append("| " + " | ".join(padded) + " |")
+                lines.append("")
+            if s.chart and s.chart.series:  # render a chart's data as a markdown table
+                cats = s.chart.categories or [str(i + 1) for i in range(max((len(se.values) for se in s.chart.series), default=0))]
+                lines.append(f"**{s.chart.title or s.chart.type.title() + ' chart'}**")
+                head = ["Category"] + [se.name or f"Series {i+1}" for i, se in enumerate(s.chart.series)]
+                lines.append("| " + " | ".join(head) + " |")
+                lines.append("| " + " | ".join("---" for _ in head) + " |")
+                for i, cat in enumerate(cats):
+                    vals = [(f"{se.values[i]:g}" if i < len(se.values) else "") for se in s.chart.series]
+                    lines.append("| " + " | ".join([cat] + vals) + " |")
                 lines.append("")
         lines += ["---", "_Install the render engine (pip install -r requirements-docs.txt) for a real PPTX/DOCX/PDF._"]
         return "\n".join(lines)

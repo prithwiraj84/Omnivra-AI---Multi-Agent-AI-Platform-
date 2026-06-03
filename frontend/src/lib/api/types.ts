@@ -318,7 +318,21 @@ export interface SocialProgressEvent {
 export type DocFormat = 'pptx' | 'docx' | 'pdf'
 export type DocStatus = 'generating' | 'awaiting_approval' | 'approved' | 'rejected'
 /** Visual theme. 'auto' lets the documentation agent pick; the rest force a palette. */
-export type DocTheme = 'auto' | 'indigo' | 'emerald' | 'amber' | 'violet' | 'slate'
+export type DocTheme =
+  | 'auto'
+  | 'indigo'
+  | 'emerald'
+  | 'amber'
+  | 'violet'
+  | 'slate'
+  | 'crimson'
+  | 'teal'
+  | 'ocean'
+  | 'sunset'
+  | 'forest'
+  | 'midnight'
+  | 'rose'
+export type ChartType = 'column' | 'bar' | 'line' | 'pie' | 'area'
 
 /** A simple tabular block: a header row + data rows (rendered as a styled table). */
 export interface DocTable {
@@ -326,12 +340,27 @@ export interface DocTable {
   rows: string[][]
 }
 
-/** One section of a generated document: prose + optional bullet list + optional table. */
+/** One data series of a chart (name + numeric values aligned to the chart's categories). */
+export interface DocSeries {
+  name: string
+  values: number[]
+}
+
+/** A chart/graph spec — drawn natively in PPTX, rendered as a data table in DOCX/PDF. */
+export interface DocChart {
+  type: ChartType
+  title?: string
+  categories: string[]
+  series: DocSeries[]
+}
+
+/** One section of a generated document: prose + optional bullet list + optional table/chart. */
 export interface DocSection {
   heading: string
   body: string
   bullets?: string[]
   table?: DocTable | null
+  chart?: DocChart | null
 }
 
 /**
@@ -347,7 +376,7 @@ export interface DocumentDraft {
   format: DocFormat
   title: string
   subtitle?: string
-  theme?: string // resolved palette name (indigo | emerald | amber | violet | slate)
+  theme?: string // resolved palette name (one of the 12 theme names; see DocTheme)
   status: DocStatus
   sections: DocSection[]
   artifacts: string[]

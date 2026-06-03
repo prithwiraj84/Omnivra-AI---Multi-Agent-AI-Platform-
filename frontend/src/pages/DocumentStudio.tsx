@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import {
+  BarChart3,
   Check,
   Download,
   FileText,
@@ -31,23 +32,30 @@ const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
 ]
 const FORMAT_LABEL: Record<string, string> = { pptx: 'PPTX', docx: 'DOCX', pdf: 'PDF' }
 
-/** Visual theme palettes — mirrors backend doc_render.THEMES. 'auto' lets the agent pick. */
-const THEMES: { value: DocTheme; label: string; swatch: string }[] = [
-  { value: 'auto', label: 'Auto', swatch: 'linear-gradient(135deg, #06b6d4, #7c3aed)' },
-  { value: 'indigo', label: 'Indigo', swatch: '#4F46E5' },
-  { value: 'emerald', label: 'Emerald', swatch: '#059669' },
-  { value: 'amber', label: 'Amber', swatch: '#D97706' },
-  { value: 'violet', label: 'Violet', swatch: '#7C3AED' },
-  { value: 'slate', label: 'Slate', swatch: '#334155' },
-]
-/** Resolved (non-auto) palette colors, for the per-card theme dot. */
+/** Resolved (non-auto) palette colors — mirrors backend doc_render.THEMES primaries. */
 const THEME_HEX: Record<string, string> = {
   indigo: '#4F46E5',
   emerald: '#059669',
   amber: '#D97706',
   violet: '#7C3AED',
   slate: '#334155',
+  crimson: '#BE123C',
+  teal: '#0D9488',
+  ocean: '#0284C7',
+  sunset: '#EA580C',
+  forest: '#166534',
+  midnight: '#1E293B',
+  rose: '#BE185D',
 }
+/** Visual theme palettes for the Style picker. 'auto' lets the agent pick to match the topic. */
+const THEMES: { value: DocTheme; label: string; swatch: string }[] = [
+  { value: 'auto', label: 'Auto (match topic)', swatch: 'linear-gradient(135deg, #06b6d4, #7c3aed)' },
+  ...(Object.keys(THEME_HEX) as DocTheme[]).map((k) => ({
+    value: k,
+    label: k.charAt(0).toUpperCase() + k.slice(1),
+    swatch: THEME_HEX[k],
+  })),
+]
 
 /** Compact in-card preview of a section's table (header + first rows). */
 function MiniTable({ table }: { table: DocTable }) {
@@ -180,6 +188,13 @@ function DocumentCard({
                 </ul>
               )}
               {s.table && <MiniTable table={s.table} />}
+              {s.chart && s.chart.series && s.chart.series.length > 0 && (
+                <div className="mt-1.5 inline-flex items-center gap-1 rounded border border-white/[0.08] bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-[#a1a1aa]">
+                  <BarChart3 className="h-3 w-3 text-omnivra-cyan" aria-hidden />
+                  {s.chart.title || `${s.chart.type} chart`}
+                  {s.chart.categories && s.chart.categories.length > 0 && ` · ${s.chart.categories.length} pts`}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -301,7 +316,7 @@ export function DocumentStudio() {
               </div>
 
               {/* Style picker — colored swatches drive the rendered document's palette */}
-              <div className="inline-flex items-center gap-1.5" role="group" aria-label="Document style">
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Document style">
                 <Palette className="h-3.5 w-3.5 text-[#71717a]" aria-hidden />
                 {THEMES.map(({ value, label, swatch }) => (
                   <button
