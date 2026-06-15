@@ -24,11 +24,13 @@ class OpenRouterProvider(BaseProvider):
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         if not self.is_configured:
             return make_stub_response(request, self.name)
-        return await openai_chat(
-            base_url=self._base_url,
-            api_key=self._api_key or "",
-            request=request,
-            provider_name=self.name,
-            extra_headers=self._headers,
-            timeout=self._timeout,
+        return await self._acall(
+            lambda key: openai_chat(
+                base_url=self._base_url,
+                api_key=key,
+                request=request,
+                provider_name=self.name,
+                extra_headers=self._headers,
+                timeout=self._timeout,
+            )
         )

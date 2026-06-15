@@ -129,12 +129,15 @@ class DocumentService:
             format_rule = (
                 "- This is a PRESENTATION (slides): keep each section to a punchy heading, a SHORT body line, and "
                 "3-5 concise bullets (a few words each, NOT paragraphs). Use a chart ONLY if the section genuinely "
-                "has numeric data; most slides need none."
+                "has numeric data; most slides need none. Aim for 6-10 slides."
             )
         else:
             format_rule = (
-                "- This is a written document. Use complete paragraphs of real sentences for each `body`, with "
-                "bullets/tables/charts only where they genuinely add value."
+                "- This is a WRITTEN DOCUMENT: be COMPREHENSIVE and in-depth, like real documentation. Write 8-14 "
+                "sections that thoroughly cover the topic from introduction to conclusion. Each `body` must be 2-4 "
+                "FULL paragraphs of real sentences (explain the what AND the why, give concrete examples, cover "
+                "caveats/edge cases) — NOT a single line. Separate paragraphs within a body with a blank line. "
+                "Do not pad with filler, but do not be terse: depth and completeness matter."
             )
         ask = (
             "Write COMPLETE, professional documentation that DIRECTLY answers the request below. "
@@ -147,7 +150,7 @@ class DocumentService:
             "- Stay STRICTLY on the requested topic. Write the actual content the user asked for — concrete, "
             "specific, and accurate (real steps, commands, examples as appropriate). Do NOT add generic filler, "
             "meta-commentary, or sections unrelated to the request.\n"
-            "- Use as many sections as the topic genuinely needs (usually 4-9); no placeholders, no 'TODO', no '...'.\n"
+            "- Use enough sections to cover the topic well; no placeholders, no 'TODO', no '...'.\n"
             f"{format_rule}\n"
             "- DECIDE, per section, whether a table or chart is ACTUALLY warranted. MANY documents (guides, "
             "how-tos, tutorials, essays, policies, conceptual or narrative topics) need NO tables and NO charts at "
@@ -168,8 +171,10 @@ class DocumentService:
             "- Output the ENTIRE JSON and close every brace and bracket.\n"
             f"Request: {prompt}"
         )
-        # Generous budget so a full doc fits; truncated JSON is still recovered by _parse.
-        out = await run_agent("documentation-agent", ask, registry=get_provider_registry(), max_tokens=4096)
+        # A document needs a much larger budget than a slide deck to come out long/comprehensive;
+        # a truncated response is still recovered section-by-section by _parse.
+        budget = 4096 if fmt == "pptx" else 7000
+        out = await run_agent("documentation-agent", ask, registry=get_provider_registry(), max_tokens=budget)
         if out.get("ok"):
             parsed = self._parse(out.get("content", ""))
             if parsed:

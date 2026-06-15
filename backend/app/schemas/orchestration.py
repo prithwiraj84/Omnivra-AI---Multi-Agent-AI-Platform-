@@ -34,6 +34,7 @@ class RunResult(CamelModel):
     task: str
     plan: list[str] = []
     delegations: list[str] = []
+    current_agent: str | None = None  # the agent CURRENTLY executing (live status while 'running'); None when idle/terminal
     agent_outputs: list[AgentRunOutput] = []
     recursion_count: int = 0
     result: dict = {}

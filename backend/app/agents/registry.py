@@ -61,7 +61,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["planning", "orchestration", "delegation", "approvals"]),
         # Architecture
         AgentSpec(id="solution-architect", name="Solution Architect", department=Department.ARCHITECTURE,
-                  provider="groq", model="openai/gpt-oss-120b",
+                  provider="openrouter", model="openai/gpt-oss-120b:free",
                   responsibilities=["system design", "file manifest"]),
         # Design
         AgentSpec(id="uiux-designer", name="UI/UX Designer", department=Department.DESIGN,
@@ -82,10 +82,10 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["endpoint design", "contracts", "integration"]),
         # Quality & Security
         AgentSpec(id="qa-engineer", name="QA Engineer", department=Department.QUALITY_SECURITY,
-                  provider="groq", model="llama-3.3-70b-versatile",
+                  provider="google_ai", model="gemini-3.1-flash-lite",
                   responsibilities=["test plans", "test code", "validation"]),
         AgentSpec(id="secops-engineer", name="SecOps Engineer", department=Department.QUALITY_SECURITY,
-                  provider="groq", model="openai/gpt-oss-120b",
+                  provider="openrouter", model="openai/gpt-oss-120b:free",
                   responsibilities=["threat modeling", "audits", "hardening"]),
         # Marketing
         AgentSpec(id="seo-researcher", name="SEO Researcher", department=Department.MARKETING,
@@ -99,10 +99,10 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   responsibilities=["short-form scripting", "reel automation"]),
         # Documentation
         AgentSpec(id="documentation-agent", name="Documentation Agent", department=Department.DOCUMENTATION,
-                  provider="groq", model="llama-3.3-70b-versatile",
+                  provider="openrouter", model="google/gemma-4-31b-it:free",
                   responsibilities=["docs", "READMEs", "guides"]),
         AgentSpec(id="presentation-designer", name="Presentation Designer", department=Department.DOCUMENTATION,
-                  provider="groq", model="llama-3.3-70b-versatile",
+                  provider="openrouter", model="google/gemma-4-31b-it:free",
                   responsibilities=["slide decks", "presentation export"]),
         # Recovery
         AgentSpec(id="recovery-agent", name="Recovery Agent", department=Department.RECOVERY,

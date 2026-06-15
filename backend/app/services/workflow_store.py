@@ -69,6 +69,29 @@ def get_workflow_store(project_id: str = DEFAULT_PROJECT) -> WorkflowStore:
     return WorkflowStore(project_root(project_id))
 
 
+def update_run_progress(
+    project_id: str,
+    workflow_id: str,
+    *,
+    current_agent: str | None = None,
+    delegations: list[str] | None = None,
+) -> None:
+    """Best-effort LIVE progress update on a still-running run record, so the polled dashboard can
+    show which agent is working RIGHT NOW (the graph nodes call this as they execute; the orchestrator
+    overwrites the terminal record at the end). Never raises — progress telemetry must not break a run."""
+    try:
+        store = get_workflow_store(project_id)
+        run = store.get(workflow_id)
+        if run is None or run.status != "running":  # only annotate a live run
+            return
+        run.current_agent = current_agent
+        if delegations is not None:
+            run.delegations = delegations
+        store.save(run)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("update_run_progress({}) skipped: {}", workflow_id, exc)
+
+
 def find_run(workflow_id: str) -> tuple[str, RunResult] | None:
     """Locate a run across all projects by id. Returns (project_id, run) or None.
 

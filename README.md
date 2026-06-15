@@ -169,19 +169,19 @@ volatile runtime state lives under `workspace/.state/`.
 | Department | Agent | Provider / Model |
 |---|---|---|
 | Executive | CEO / Manager | Google AI Studio · `gemini-3.1-flash-lite` |
-| Architecture | Solution Architect | Groq · `openai/gpt-oss-120b` |
+| Architecture | Solution Architect | OpenRouter · `openai/gpt-oss-120b:free` |
 | Design | UI/UX Designer | Google AI Studio · `gemini-3.1-flash-lite` |
 | Engineering | Database Engineer | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
 | Engineering | Frontend Engineer | OpenRouter · `poolside/laguna-m.1:free` |
 | Engineering | Backend Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
 | Engineering | API Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
-| Quality & Security | QA Engineer | Groq · `llama-3.3-70b-versatile` |
-| Quality & Security | SecOps Engineer | Groq · `openai/gpt-oss-120b` |
+| Quality & Security | QA Engineer | Google AI Studio · `gemini-3.1-flash-lite` |
+| Quality & Security | SecOps Engineer | OpenRouter · `openai/gpt-oss-120b:free` |
 | Marketing | SEO Researcher | Groq · `groq/compound` |
 | Marketing | Social Strategist | OpenRouter · `moonshotai/kimi-k2.6:free` |
 | Marketing | Reel Automation | Groq · `llama-3.1-8b-instant` |
-| Documentation | Documentation Agent | Groq · `llama-3.3-70b-versatile` |
-| Documentation | Presentation Designer | Groq · `llama-3.3-70b-versatile` |
+| Documentation | Documentation Agent | OpenRouter · `google/gemma-4-31b-it:free` |
+| Documentation | Presentation Designer | OpenRouter · `google/gemma-4-31b-it:free` |
 | Recovery | Recovery Agent | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
 | System Ops | Task Classifier, Workflow Router, Memory Retrieval, Notification, Log Analyzer | OpenRouter · `liquid/lfm-2.5-1.2b-thinking:free` |
 | Media | Speech-to-Text | Groq · `whisper-large-v3-turbo` |
@@ -189,6 +189,8 @@ volatile runtime state lives under `workspace/.state/`.
 | Media | Image Generation | Hugging Face · `black-forest-labs/FLUX.1-schnell` |
 
 23 agents total, registered in `backend/app/agents/registry.py`.
+
+**Resilience:** every `*_API_KEY` accepts a comma-separated **pool** of keys (e.g. `OPENROUTER_API_KEY=k1,k2,k3`) that the provider rotates across on rate limits (429), and a text agent whose provider is exhausted automatically **falls back** to another configured provider (OpenRouter → Groq → Gemini, each skipping the agent's own) — so one throttled key or provider doesn't stall a run. Tip: pool several keys on the OpenRouter agents above, since the free tier's ~50/day is per-account.
 
 ---
 

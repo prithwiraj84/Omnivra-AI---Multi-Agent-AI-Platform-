@@ -19,8 +19,15 @@ export function useDashboard() {
     queryFn: getDashboard,
     initialData: fallbackDashboard,
     initialDataUpdatedAt: 0, // fallback is stale on arrival -> fetch real data immediately
-    staleTime: 10_000,
-    refetchInterval: 15_000, // poll so the dashboard reflects ongoing activity
+    staleTime: 3_000,
+    // Poll FAST (3s) while a run is active so live agent working/idle transitions show, else every 15s.
+    refetchInterval: (query) => {
+      const d = query.state.data
+      const active =
+        !!d?.agents?.some((a) => a.status === 'working' || a.status === 'needs_approval') ||
+        !!d?.workflows?.some((w) => w.status === 'In Progress' || w.status === 'Review')
+      return active ? 3_000 : 15_000
+    },
     retry: 1,
   })
 }

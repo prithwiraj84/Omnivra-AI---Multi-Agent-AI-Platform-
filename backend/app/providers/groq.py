@@ -31,12 +31,14 @@ class GroqProvider(BaseProvider):
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         if not self.is_configured:
             return make_stub_response(request, self.name)
-        return await openai_chat(
-            base_url=self._base_url,
-            api_key=self._api_key or "",
-            request=request,
-            provider_name=self.name,
-            timeout=self._timeout,
+        return await self._acall(
+            lambda key: openai_chat(
+                base_url=self._base_url,
+                api_key=key,
+                request=request,
+                provider_name=self.name,
+                timeout=self._timeout,
+            )
         )
 
     @with_provider_retry(max_attempts=3)
@@ -50,19 +52,21 @@ class GroqProvider(BaseProvider):
             raise FatalProviderError("GROQ_API_KEY is not configured")
         url = self._base_url.rstrip("/") + "/audio/speech"
         payload = {"model": model, "input": text, "voice": voice, "response_format": response_format}
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    url, headers={"Authorization": f"Bearer {self._api_key}"}, json=payload
-                )
-        except httpx.TimeoutException as exc:
-            raise TransientProviderError(f"timeout: {exc}") from exc
-        except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
-            raise TransientProviderError(f"connection: {exc}") from exc
-        if resp.status_code == 429:
-            raise RateLimitError(resp.text[:200])
-        if 500 <= resp.status_code < 600:
-            raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
-        if resp.status_code >= 400:
-            raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
-        return resp.content
+
+        async def run(key: str) -> bytes:
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    resp = await client.post(url, headers={"Authorization": f"Bearer {key}"}, json=payload)
+            except httpx.TimeoutException as exc:
+                raise TransientProviderError(f"timeout: {exc}") from exc
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+                raise TransientProviderError(f"connection: {exc}") from exc
+            if resp.status_code == 429:
+                raise RateLimitError(resp.text[:200])
+            if 500 <= resp.status_code < 600:
+                raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
+            if resp.status_code >= 400:
+                raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
+            return resp.content
+
+        return await self._acall(run)

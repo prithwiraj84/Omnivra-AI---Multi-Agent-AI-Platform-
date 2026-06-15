@@ -56,8 +56,32 @@ def test_plan_delegations_empty_task_falls_back() -> None:
 
     # Empty-ish task still yields a valid, architect-first default plan.
     assert plan[0] == "solution-architect"
-    assert 2 <= len(plan) <= 5
+    assert 2 <= len(plan) <= 8
     assert all(agent_id in AGENT_REGISTRY for agent_id in plan)
+
+
+def test_plan_delegations_uses_ceo_structured_pick() -> None:
+    """When the CEO returns a JSON team, it drives delegation (broad, not the keyword trio)."""
+    ceo = '{"plan": ["uiux-designer", "frontend-engineer", "backend-engineer", "api-engineer", "qa-engineer", "secops-engineer"], "rationale": "full build"}'
+    plan = plan_delegations("Build a web app", ceo)
+    assert plan == ["uiux-designer", "frontend-engineer", "backend-engineer", "api-engineer", "qa-engineer", "secops-engineer"]
+    assert len(plan) <= 8
+
+
+def test_plan_delegations_filters_unknown_and_non_delegatable() -> None:
+    """The CEO's pick is filtered to KNOWN, delegatable (text) agents — junk + system/media ids dropped."""
+    ceo = '{"plan": ["backend-engineer", "task-classifier", "image-generation", "ceo-manager", "not-an-agent", "qa-engineer"]}'
+    plan = plan_delegations("x", ceo)
+    assert plan == ["backend-engineer", "qa-engineer"]  # system-ops/media/ceo/unknown removed
+
+
+def test_delegatable_excludes_ceo_system_and_media() -> None:
+    from app.graph.planner import delegatable_agents
+
+    d = set(delegatable_agents())
+    assert "solution-architect" in d and "backend-engineer" in d and "documentation-agent" in d
+    assert "ceo-manager" not in d  # the planner, not a delegate
+    assert "task-classifier" not in d and "image-generation" not in d  # system/media: not chat-delegable
 
 
 # --------------------------------------------------------------------------- #

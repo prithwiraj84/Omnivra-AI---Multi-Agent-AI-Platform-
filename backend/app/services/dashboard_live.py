@@ -125,7 +125,10 @@ def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
     awaiting_agents: set[str] = set()
     for r in runs:
         if r.status == "running":
-            working_agents |= _run_agents(r)
+            # Prefer the precise live signal: the single agent CURRENTLY executing (set incrementally
+            # by the CEO/delegate nodes). Fall back to the whole run set before the first node persists.
+            ca = getattr(r, "current_agent", None)
+            working_agents |= {ca} if ca else _run_agents(r)
         elif r.status == "awaiting_approval":
             awaiting_agents |= _run_agents(r)
     awaiting_agents -= working_agents  # a live run wins over a stale gate for the same agent

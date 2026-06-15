@@ -16,6 +16,7 @@ from app.graph.state import AgentOutput, OmnivraState, WorkflowStatus
 from app.providers.registry import ProviderRegistry
 from app.services.memory import get_memory_service
 from app.services.realtime import emit
+from app.services.workflow_store import update_run_progress
 from app.workspace_fs.paths import DEFAULT_PROJECT
 
 DelegateNode = Callable[[OmnivraState], Awaitable[OmnivraState]]
@@ -43,6 +44,8 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
     async def delegate_node(state: OmnivraState) -> OmnivraState:
         task = state.get("task", "")
         plan = list(state.get("plan", []))
+        pid = state.get("project_id") or DEFAULT_PROJECT
+        workflow_id = state.get("workflow_id", "")
         logger.debug("[delegate] plan={}", plan)
 
         outputs: list[AgentOutput] = []
@@ -50,9 +53,11 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
         prior: list[AgentOutput] = list(state.get("agent_outputs", []))
 
         # RAG: recall relevant memory from THIS project's earlier work (isolated per project).
-        memory_block = get_memory_service(state.get("project_id") or DEFAULT_PROJECT).recall_context(task, k=3)
+        memory_block = get_memory_service(pid).recall_context(task, k=3)
 
         for agent_id in plan:
+            # LIVE status: this specialist is the one working RIGHT NOW (polled dashboard reads it).
+            update_run_progress(pid, workflow_id, current_agent=agent_id, delegations=plan)
             base = _build_context(prior + outputs)
             context = f"{memory_block}\n\n{base}".strip() if memory_block else base
             # Builder agents need a far bigger budget to emit complete code files (512 is prose-sized).

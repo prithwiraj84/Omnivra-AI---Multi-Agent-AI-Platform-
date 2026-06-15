@@ -36,23 +36,7 @@ class HuggingFaceProvider(BaseProvider):
         """Generate an image via the HF Inference router. Returns raw image bytes (jpeg/png)."""
         if not self.is_configured:
             raise FatalProviderError("HUGGINGFACE_API_KEY is not configured")
-        url = self._endpoint.rstrip("/") + f"/models/{model}"
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    url, headers={"Authorization": f"Bearer {self._api_key}"}, json={"inputs": prompt}
-                )
-        except httpx.TimeoutException as exc:
-            raise TransientProviderError(f"timeout: {exc}") from exc
-        except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
-            raise TransientProviderError(f"connection: {exc}") from exc
-        if resp.status_code == 429:
-            raise RateLimitError(resp.text[:200])
-        if 500 <= resp.status_code < 600:
-            raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
-        if resp.status_code >= 400:
-            raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
-        return resp.content
+        return await self._acall(lambda key: self._post_bytes(key, model, {"inputs": prompt}))
 
     @with_provider_retry(max_attempts=4)
     async def generate_audio(self, *, text: str, model: str = "canopylabs/orpheus-v1-english") -> bytes:
@@ -62,12 +46,14 @@ class HuggingFaceProvider(BaseProvider):
         """
         if not self.is_configured:
             raise FatalProviderError("HUGGINGFACE_API_KEY is not configured")
+        return await self._acall(lambda key: self._post_bytes(key, model, {"inputs": text}))
+
+    async def _post_bytes(self, key: str, model: str, payload: dict) -> bytes:
+        """POST to the HF Inference router with one key; map errors so the pool can rotate on 429/auth."""
         url = self._endpoint.rstrip("/") + f"/models/{model}"
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    url, headers={"Authorization": f"Bearer {self._api_key}"}, json={"inputs": text}
-                )
+                resp = await client.post(url, headers={"Authorization": f"Bearer {key}"}, json=payload)
         except httpx.TimeoutException as exc:
             raise TransientProviderError(f"timeout: {exc}") from exc
         except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:

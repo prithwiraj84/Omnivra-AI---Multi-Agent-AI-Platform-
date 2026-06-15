@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -625,9 +626,13 @@ def _render_docx(title: str, subtitle: str, sections: list[dict[str, Any]], out:
 
         body = (sec.get("body") or "").strip()
         if body:
-            bp = doc.add_paragraph(body)
-            for run in bp.runs:
-                run.font.color.rgb = ink
+            for para_text in re.split(r"\n\s*\n", body):  # render multi-paragraph bodies as real paragraphs
+                para_text = para_text.strip()
+                if not para_text:
+                    continue
+                bp = doc.add_paragraph(para_text)
+                for run in bp.runs:
+                    run.font.color.rgb = ink
 
         for b in (sec.get("bullets") or []):
             text = str(b).strip()

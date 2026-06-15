@@ -34,20 +34,22 @@ class GoogleAIProvider(BaseProvider):
         if sys_parts:
             body["systemInstruction"] = {"parts": [{"text": " ".join(sys_parts)}]}
 
-        url = f"{_BASE}/models/{request.model}:generateContent?key={self._api_key}"
-        data = await post_json(url, headers={"Content-Type": "application/json"}, body=body, timeout=self._timeout)
+        async def run(key: str) -> CompletionResponse:
+            url = f"{_BASE}/models/{request.model}:generateContent?key={key}"
+            data = await post_json(url, headers={"Content-Type": "application/json"}, body=body, timeout=self._timeout)
+            candidates = data.get("candidates") or []
+            text = ""
+            if candidates:
+                parts = (candidates[0].get("content") or {}).get("parts") or []
+                text = "".join(p.get("text", "") for p in parts)
+            usage = data.get("usageMetadata") or {}
+            return CompletionResponse(
+                text=text,
+                model=request.model,
+                provider=self.name,
+                raw=data,
+                prompt_tokens=usage.get("promptTokenCount"),
+                completion_tokens=usage.get("candidatesTokenCount"),
+            )
 
-        candidates = data.get("candidates") or []
-        text = ""
-        if candidates:
-            parts = (candidates[0].get("content") or {}).get("parts") or []
-            text = "".join(p.get("text", "") for p in parts)
-        usage = data.get("usageMetadata") or {}
-        return CompletionResponse(
-            text=text,
-            model=request.model,
-            provider=self.name,
-            raw=data,
-            prompt_tokens=usage.get("promptTokenCount"),
-            completion_tokens=usage.get("candidatesTokenCount"),
-        )
+        return await self._acall(run)

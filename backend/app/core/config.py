@@ -87,7 +87,11 @@ class Settings(BaseSettings):
     # --- Orchestration safety ---
     max_recursion: int = 3
     provider_timeout_seconds: float = 60.0
-    provider_max_retries: int = 5
+    # Per-call attempts before giving up on a provider. Kept low (2) because the key POOL already
+    # rotates across all of a provider's keys within a single attempt, and run_agent then fails over
+    # to another provider — so a dead/exhausted provider switches over PROMPTLY instead of burning
+    # several backoff retries on it first.
+    provider_max_retries: int = 2
 
     # --- Security / Auth ---
     api_secret_key: str = "change-me-in-prod"

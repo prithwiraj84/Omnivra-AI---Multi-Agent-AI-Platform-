@@ -14,6 +14,17 @@ from app.providers.registry import ProviderRegistry
 from app.services.usage import record_agent_call
 
 
+# Cross-provider fallback chain for TEXT agents: if an agent's own provider is exhausted (all its
+# keys rate-limited) or returns empty, retry the SAME prompt on the first CONFIGURED provider here
+# (skipping the agent's own). Ordered most-reliable first: an OpenRouter agent fails over to Groq
+# then Gemini; a Groq/Gemini agent can in turn spill to OpenRouter as a last resort.
+_TEXT_FALLBACKS: tuple[tuple[str, str], ...] = (
+    ("groq", "llama-3.3-70b-versatile"),
+    ("google_ai", "gemini-3.1-flash-lite"),
+    ("openrouter", "z-ai/glm-4.5-air:free"),
+)
+
+
 # Builder agents that should emit real, runnable code FILES (not prose descriptions).
 _CODE_AGENTS = {
     "solution-architect", "uiux-designer", "frontend-engineer",
@@ -59,24 +70,51 @@ async def run_agent(
     failed delegation cannot crash the whole workflow.
     """
     spec = get_agent(agent_id)
-    provider = registry.get(spec.provider)
+    primary = registry.get(spec.provider)
 
     messages: list[dict[str, str]] = [{"role": "system", "content": build_system_prompt(spec)}]
     if context:
         messages.append({"role": "user", "content": f"Context from earlier steps:\n{context}"})
     messages.append({"role": "user", "content": task})
 
-    request = CompletionRequest(model=spec.model, messages=messages, max_tokens=max_tokens)
+    def _ok(provider_name: str, model: str, resp) -> AgentOutput:
+        record_agent_call(provider_name, model)  # real session usage for the dashboard
+        return AgentOutput(agent_id=agent_id, content=resp.text, artifacts=[], tokens=resp.completion_tokens or 0, ok=True)
+
+    last_err = "no provider produced content"
+
+    # 1) The agent's own provider/model. Its key pool already rotates across keys internally; here
+    #    we add a CROSS-PROVIDER fallback so one provider being exhausted doesn't fail the agent.
     try:
-        resp = await provider.complete(request)
-        record_agent_call(spec.provider, spec.model)  # real session usage for the dashboard
-        return AgentOutput(
-            agent_id=agent_id,
-            content=resp.text,
-            artifacts=[],
-            tokens=resp.completion_tokens or 0,
-            ok=True,
-        )
-    except Exception as exc:  # noqa: BLE001 - record failure, keep the workflow alive
-        logger.error("Agent {} failed: {}", agent_id, exc)
-        return AgentOutput(agent_id=agent_id, content=f"[error] {exc}", artifacts=[], tokens=0, ok=False)
+        resp = await primary.complete(CompletionRequest(model=spec.model, messages=messages, max_tokens=max_tokens))
+        # Offline/unconfigured -> the deterministic stub (non-empty) is the intended behavior; accept it.
+        if (resp.text or "").strip() or not primary.is_configured:
+            return _ok(spec.provider, spec.model, resp)
+        last_err = "empty response"
+        logger.warning("Agent {}: primary {} returned empty content; trying a fallback provider", agent_id, spec.provider)
+    except Exception as exc:  # noqa: BLE001
+        last_err = repr(exc)
+        logger.warning("Agent {}: primary {} failed ({}); trying a fallback provider", agent_id, spec.provider, exc)
+
+    # 2) Cross-provider fallback — only when the primary is actually configured (offline stays stubbed).
+    if primary.is_configured:
+        for fb_provider, fb_model in _TEXT_FALLBACKS:
+            if fb_provider == spec.provider:
+                continue
+            try:
+                fb = registry.get(fb_provider)
+            except Exception:  # noqa: BLE001 - unknown provider name
+                continue
+            if not fb.is_configured:
+                continue
+            try:
+                resp = await fb.complete(CompletionRequest(model=fb_model, messages=messages, max_tokens=max_tokens))
+                if (resp.text or "").strip():
+                    logger.warning("Agent {}: fell back {} -> {} ({})", agent_id, spec.provider, fb_provider, fb_model)
+                    return _ok(fb_provider, fb_model, resp)
+            except Exception as exc:  # noqa: BLE001
+                last_err = repr(exc)
+                continue
+
+    logger.error("Agent {} failed: {}", agent_id, last_err)
+    return AgentOutput(agent_id=agent_id, content=f"[error] {last_err}", artifacts=[], tokens=0, ok=False)
