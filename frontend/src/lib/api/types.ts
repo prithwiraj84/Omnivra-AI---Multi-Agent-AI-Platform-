@@ -400,6 +400,78 @@ export interface DocumentDecision {
   note?: string
 }
 
+// --- Department command center (cp-0048) -----------------------------------
+
+/** One agent on a department page (live status + per-agent usage). */
+export interface DeptAgent {
+  id: string
+  name: string
+  status: string // working | needs_approval | idle
+  provider: string
+  model: string
+  modelLabel: string
+  accent: string
+  kind: string
+  calls: number
+  lastActivity: string | null
+  responsibilities: string[]
+}
+
+export interface DeptTask {
+  id: string
+  title: string
+  status: string
+  priority: string
+}
+
+export interface DeptWorkflow {
+  id: string
+  task: string
+  status: string
+  agents: number
+}
+
+export interface DeptOutput {
+  path: string
+  category: string
+  sizeBytes: number
+  modified: string
+  agentId: string | null
+  projectId: string
+}
+
+/** A department activity item — `icon` is a string key resolved via resolveIcon. */
+export interface DeptActivity {
+  id: string
+  agent: string
+  action: string
+  time: string
+  accent: string
+  icon: string
+}
+
+export interface DeptProviderCalls {
+  provider: string
+  label: string
+  calls: number
+}
+
+/** Wire shape of GET /api/departments/{slug}/overview. `stats` carry string icon keys. */
+export interface DepartmentOverview {
+  slug: string
+  title: string
+  note: string
+  accent: string
+  stats: StatCardDTO[]
+  agents: DeptAgent[]
+  tasks: DeptTask[]
+  workflows: DeptWorkflow[]
+  activity: DeptActivity[]
+  outputs: DeptOutput[]
+  providerUsage: DeptProviderCalls[]
+  execution: TaskPoint[]
+}
+
 /** Icon-resolved shape consumed by the dashboard section components. */
 export interface DashboardData {
   stats: StatCardData[]

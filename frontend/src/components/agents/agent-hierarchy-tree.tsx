@@ -53,10 +53,10 @@ function NodeLabel({ label, sublabel, accent, tier }: NodeLabelData) {
   const ac = accentClasses(accent)
   return (
     <div className="flex flex-col gap-0.5 px-1 py-0.5 text-left">
-      <span className={`truncate text-[12px] font-semibold leading-tight ${tier === 'ceo' ? ac.text : 'text-zinc-100'}`}>
+      <span title={label} className={`truncate text-[12px] font-semibold leading-tight ${tier === 'ceo' ? ac.text : 'text-zinc-100'}`}>
         {label}
       </span>
-      <span className={`truncate text-[10px] leading-tight ${tier === 'department' ? ac.text : 'text-zinc-500'}`}>
+      <span title={sublabel} className={`truncate text-[10px] leading-tight ${tier === 'department' ? ac.text : 'text-zinc-500'}`}>
         {sublabel}
       </span>
     </div>

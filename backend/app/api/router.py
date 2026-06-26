@@ -14,6 +14,7 @@ from app.api.routes import (
     approvals,
     auth,
     dashboard,
+    departments,
     documents,
     knowledge,
     media,
@@ -29,6 +30,7 @@ from app.api.routes import (
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth")
 api_router.include_router(dashboard.router, prefix="/dashboard")
+api_router.include_router(departments.router, prefix="/departments")
 api_router.include_router(projects.router, prefix="/projects")
 api_router.include_router(tasks.router, prefix="/tasks")
 api_router.include_router(agents.router, prefix="/agents")

@@ -70,8 +70,8 @@ export function AgentCard({ agent }: AgentCardProps) {
         <div className="flex items-center gap-3">
           <IconTile accent={agent.accent} size="sm" icon={Icon} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-zinc-100">{agent.name}</p>
-            <p className="truncate text-xs text-zinc-500">{agent.modelLabel}</p>
+            <p className="text-sm font-medium leading-snug text-zinc-100">{agent.name}</p>
+            <p className="mt-0.5 break-words text-xs leading-snug text-zinc-500">{agent.modelLabel}</p>
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-white/[0.06] pt-2.5">
