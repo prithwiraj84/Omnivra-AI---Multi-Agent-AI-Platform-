@@ -20,12 +20,14 @@ export function RightRail({ className, ...props }: RightRailProps) {
   return (
     <aside
       className={cn(
-        'hidden w-[320px] shrink-0 flex-col overflow-y-auto scroll-thin border-l border-white/[0.08] p-5 xl:flex',
+        // h-full fills the viewport-height rail track so its cards sit on-screen; overflow-y-auto is
+        // a graceful fallback (no scrollbar when the four cards fit, which they do on a normal screen).
+        'hidden h-full w-[320px] shrink-0 flex-col gap-4 overflow-y-auto scroll-thin border-l border-white/[0.08] p-4 xl:flex',
         className,
       )}
       {...props}
     >
-      <Stagger className="flex flex-col gap-5">
+      <Stagger className="flex flex-col gap-4">
         <StaggerItem>
           <ActivityFeed items={data.activity} />
         </StaggerItem>

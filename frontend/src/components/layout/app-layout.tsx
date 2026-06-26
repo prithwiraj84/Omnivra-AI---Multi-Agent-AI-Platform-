@@ -37,7 +37,7 @@ export function AppLayout() {
 
   return (
     <div
-      className="relative min-h-screen w-full overflow-hidden"
+      className="relative h-screen w-full overflow-hidden"
       style={{ backgroundColor: 'var(--omni-bg-base)' }}
     >
       {/* Faint blueprint grid wash across the whole surface */}
@@ -54,7 +54,7 @@ export function AppLayout() {
       {/* Three-track shell. Columns animate when the sidebar/rail toggle. */}
       <div
         className={cn(
-          'relative z-10 grid min-h-screen w-full',
+          'relative z-10 grid h-screen w-full',
           'transition-[grid-template-columns] duration-300 ease-out-quint',
           // mobile: single column (sidebar handles its own off-canvas behaviour)
           'grid-cols-1',
@@ -75,11 +75,12 @@ export function AppLayout() {
         {/* Column 1 — Sidebar (sticky, full height) */}
         <Sidebar />
 
-        {/* Column 2 — main: sticky Topbar over a scrollable content region */}
-        <div className="flex min-h-screen min-w-0 flex-col">
+        {/* Column 2 — main: fixed Topbar over its OWN scrollable content region. h-screen +
+            min-h-0 so the <main> overflow-y-auto scrolls independently (not the whole page). */}
+        <div className="flex h-screen min-h-0 min-w-0 flex-col">
           <Topbar />
 
-          <main className="scroll-thin flex-1 overflow-y-auto">
+          <main className="scroll-thin min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1600px] p-6">
               {reduce ? (
                 <div>
@@ -99,11 +100,12 @@ export function AppLayout() {
           </main>
         </div>
 
-        {/* Column 3 — RightRail (xl+ only, fixed 320px track). It owns its own
-            visibility; the 0px track above collapses the gutter when closed. */}
+        {/* Column 3 — RightRail (xl+ only, fixed 320px track). h-screen so its content sits within
+            the viewport — the rail's fixed set of cards fits without scrolling on a normal screen
+            (and only scrolls internally on a very short viewport). */}
         <div
           className={cn(
-            'hidden min-h-screen overflow-hidden',
+            'hidden h-screen overflow-hidden',
             rightRailOpen && 'xl:block',
           )}
         >
