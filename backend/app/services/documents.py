@@ -8,6 +8,7 @@ deterministic builder so it runs fully offline.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import re
@@ -17,20 +18,29 @@ from uuid import uuid4
 from app.agents.runner import run_agent
 from app.core.logging import logger
 from app.providers.registry import get_provider_registry
-from app.schemas.documents import DocChart, DocSection, DocSeries, DocTable, DocumentDraft
+from app.schemas.documents import DocChart, DocImage, DocSection, DocSeries, DocTable, DocumentDraft
 from app.services.artifacts import get_artifact_service
-from app.services.doc_render import THEMES, render_document
+from app.services.doc_render import THEMES, render_document, structure_spec
 from app.services.realtime import emit
 from app.services.document_store import get_document_store
 from app.workspace_fs.paths import project_root, safe_project_id
 
 _EXT = {"pptx": "pptx", "docx": "docx", "pdf": "pdf"}
 _DEFAULT_THEME = "indigo"
+_FONTS = ("serif", "sans", "mono")
+_DEFAULT_FONT = "sans"
+# A constant visual directive appended to every FLUX prompt: diffusion models render garbled text,
+# so we explicitly forbid words/letters and steer toward clean editorial illustration.
+_IMG_STYLE = (
+    "professional editorial illustration, clean modern composition, high quality, "
+    "no text, no words, no letters, no captions, no watermark, no logo"
+)
+_IMG_TIMEOUT = 45.0  # seconds per image; generation runs in the background after the text is written
 
 
 def _resolve_theme(requested: str | None, suggested: str | None = None) -> str:
-    """Pick the visual theme: an explicit (non-'auto') request wins; else the agent's
-    suggestion; else the default. Always returns a known palette name."""
+    """Pick the visual theme (USER-controlled, independent of the genre): an explicit (non-'auto')
+    request wins; else the agent's topic-matched suggestion; else the default. Always a known palette."""
     req = (requested or "").strip().lower()
     if req and req != "auto" and req in THEMES:
         return req
@@ -40,12 +50,50 @@ def _resolve_theme(requested: str | None, suggested: str | None = None) -> str:
     return _DEFAULT_THEME
 
 
+def _resolve_font(font: str | None) -> str:
+    """Typeface family chosen by the user (serif|sans|mono); unknown -> sans."""
+    f = (font or "").strip().lower()
+    return f if f in _FONTS else _DEFAULT_FONT
+
+
+# Writing tone -> a concrete instruction shaping wording, sentence length, and which
+# sections/bullets/tables/charts fit. Drives the "each style has its own feel" the user asked for.
+_STYLE_GUIDE: dict[str, str] = {
+    "casual": "Relaxed, everyday language with contractions and a light, approachable voice; short friendly paragraphs; charts/tables rarely.",
+    "professional": "Polished, clear and business-appropriate with a confident, neutral-positive tone; tables/charts only where they add real value.",
+    "academic": "Scholarly and precise, third-person and formal, evidence-based and well-structured (background, analysis, conclusion); rigorous prose, data tables/charts only for genuine data.",
+    "formal": "Formal register, no contractions, measured and respectful, in complete well-structured sentences.",
+    "informal": "Loose, personal and conversational with contractions and a relaxed flow.",
+    "conversational": "Speak directly to the reader using 'you', the occasional rhetorical question, and a natural talking-to-a-friend rhythm.",
+    "technical": "Precise and technical: correct terminology, step-by-step instructions, code/commands where relevant, and tables for specs/options/parameters.",
+    "business": "Executive, value-focused tone for decision-makers: outcomes, metrics and recommendations; use charts/tables for KPIs, comparisons and timelines.",
+    "creative": "Vivid, imaginative and engaging — storytelling, metaphor and a distinctive voice; mostly prose, visuals only if they fit.",
+    "simple": "Plain, accessible language with short sentences and common words so anyone can follow; avoid jargon.",
+    "complex": "In-depth and nuanced with sophisticated vocabulary, layered analysis and qualifications; thorough multi-paragraph sections.",
+    "concise": "Brief and to the point — minimal words, tight sentences, bullets over long paragraphs, no filler.",
+    "detailed": "Exhaustive and thorough: cover every relevant aspect with examples, edge cases and step-by-step depth; long, complete sections.",
+    "persuasive": "Argument-driven and convincing: lead with benefits, build a case, address objections, and end with a clear call to action.",
+    "informative": "Factual, balanced and explanatory — clearly inform the reader with accurate, well-organised information.",
+    "neutral": "Objective and balanced — present information without opinion, bias or persuasion.",
+    "friendly": "Warm, encouraging and approachable — a supportive tone that puts the reader at ease.",
+    "seo-friendly": "Search-optimised: keyword-rich descriptive headings, scannable short paragraphs, and a clear benefit-led structure suited to web readers.",
+    "marketing": "Punchy, energetic and benefit-led with a strong hook and calls to action; use charts/tables for proof points and comparisons.",
+    "legal": "Formal legal register: precise, cautious wording, defined terms, and clearly numbered clauses/sections; avoid charts, favour structured unambiguous prose.",
+}
+_DEFAULT_STYLE = "professional"
+
+
+def _resolve_style(style: str | None) -> str:
+    s = (style or "").strip().lower()
+    return s if s in _STYLE_GUIDE else _DEFAULT_STYLE
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 class DocumentService:
-    def begin_document(self, prompt: str, fmt: str, theme: str, project_id: str | None) -> DocumentDraft:
+    def begin_document(self, prompt: str, fmt: str, theme: str, style: str, font: str, project_id: str | None) -> DocumentDraft:
         """Persist a 'generating' placeholder + return it IMMEDIATELY (fire-and-poll).
 
         The model write + render (which can take many seconds — well past the UI request timeout
@@ -58,35 +106,42 @@ class DocumentService:
         doc_id = "doc_" + uuid4().hex[:12]
         draft = DocumentDraft(
             id=doc_id, project_id=pid, prompt=prompt, format=fmt, title="Generating…",
-            subtitle="", theme=_resolve_theme(theme), status="generating", sections=[], artifacts=[],
-            file_path=None, stub=False, render_note=None, created_at=_now(),
+            subtitle="", theme=_resolve_theme(theme), style=_resolve_style(style), font=_resolve_font(font),
+            status="generating",
+            sections=[], artifacts=[], file_path=None, stub=False, render_note=None, created_at=_now(),
         )
         get_document_store(pid).save(draft)
         return draft
 
-    async def generate_document(self, doc_id: str, prompt: str, fmt: str, theme: str, project_id: str | None) -> None:
-        """Background job: write the content (Gemma) + render the file, then move the draft to
-        'awaiting_approval'. Never raises — on any error the draft still reaches a terminal state
-        (so the UI poll never spins forever)."""
+    async def generate_document(self, doc_id: str, prompt: str, fmt: str, theme: str, style: str, font: str, project_id: str | None) -> None:
+        """Background job: write the content (Gemma) + (optionally) generate genre-gated FLUX images +
+        render the file, then move the draft to 'awaiting_approval'. Never raises — on any error the
+        draft still reaches a terminal state (so the UI poll never spins forever)."""
         pid = safe_project_id(project_id)
         fmt = fmt if fmt in _EXT else "pdf"
         store = get_document_store(pid)
         existing = store.get(doc_id)
         created_at = existing.created_at if existing else _now()  # keep stable list ordering
+        style = _resolve_style(style)
+        font = _resolve_font(font)
         written: list[str] = []  # files actually written so far — so the except-branch keeps them (no orphans)
         try:
-            title, subtitle, resolved_theme, sections, content_note = await self._build_content(prompt, theme, fmt)
+            title, subtitle, resolved_theme, sections, content_note = await self._build_content(prompt, theme, fmt, style)
 
             base = f"reports/documents/{doc_id}"
             fm = get_artifact_service(pid).fm
-            content_json = {"title": title, "subtitle": subtitle, "theme": resolved_theme, "sections": [s.model_dump() for s in sections]}
+            # FLUX images (capped, genre-gated, skip-on-fail) — fills sec.image.path where produced.
+            await self._attach_images(sections, structure_spec(style), title, doc_id, pid, written)
+
+            content_json = {"title": title, "subtitle": subtitle, "theme": resolved_theme, "style": style,
+                            "font": font, "sections": [s.model_dump() for s in sections]}
             written.append(fm.write_text(f"{base}/content.json", json.dumps(content_json, indent=2), agent_id="documentation-agent").rel_path)
 
             # Render the real file (or fall back to a markdown deliverable).
             out_rel = f"{base}/document.{_EXT[fmt]}"
             result = render_document(
                 title, [s.model_dump() for s in sections], project_root(pid) / out_rel, fmt,
-                subtitle=subtitle, theme=resolved_theme,
+                subtitle=subtitle, theme=resolved_theme, style=style, font=font, asset_root=project_root(pid),
             )
             if result.get("ok") and not result.get("stub"):
                 file_path: str | None = out_rel
@@ -103,8 +158,8 @@ class DocumentService:
             render_note = " ".join(n for n in (content_note, result.get("note")) if n) or None
             store.save(DocumentDraft(
                 id=doc_id, project_id=pid, prompt=prompt, format=fmt, title=title, subtitle=subtitle,
-                theme=resolved_theme, status="awaiting_approval", sections=sections, artifacts=written,
-                file_path=file_path, stub=stub, render_note=render_note, created_at=created_at,
+                theme=resolved_theme, style=style, font=font, status="awaiting_approval", sections=sections,
+                artifacts=written, file_path=file_path, stub=stub, render_note=render_note, created_at=created_at,
             ))
             await emit("approval", {"approvalId": doc_id, "title": "Document approval required", "kind": "document_publish", "requestedBy": "documentation-agent", "priority": "medium"})
         except Exception as exc:  # noqa: BLE001 - reach a terminal state, never leave it 'generating'
@@ -113,6 +168,7 @@ class DocumentService:
                 store.save(DocumentDraft(
                     id=doc_id, project_id=pid, prompt=prompt, format=fmt,
                     title=(prompt.strip()[:80] or "Document"), subtitle="", theme=_resolve_theme(theme),
+                    style=style, font=font,
                     status="awaiting_approval", sections=[],
                     artifacts=written or (existing.artifacts if existing else []),
                     file_path=None, stub=True, render_note=f"Generation error: {type(exc).__name__}", created_at=created_at,
@@ -120,11 +176,85 @@ class DocumentService:
             except Exception:  # noqa: BLE001 - last resort; nothing more we can do but log
                 logger.error("terminal save for document {} also failed", doc_id)
 
-    async def _build_content(self, prompt: str, theme: str, fmt: str = "pdf") -> tuple[str, str, str, list[DocSection], str | None]:
+    async def _flux_image(self, prompt: str) -> bytes | None:
+        """Generate one image via Hugging Face FLUX.1-schnell (key-pool rotation). Returns the raw
+        bytes, or None if no HF key / timeout / any provider error — the document renders without it."""
+        text = (prompt or "").strip()
+        if not text:
+            return None
+        provider = get_provider_registry().get("huggingface")
+        if not getattr(provider, "is_configured", False):
+            return None
+        try:
+            return await asyncio.wait_for(
+                provider.generate_image(prompt=f"{text}. {_IMG_STYLE}"), timeout=_IMG_TIMEOUT,
+            )
+        except Exception as exc:  # noqa: BLE001 - never let image gen break document generation
+            logger.warning("FLUX image generation skipped: {}", repr(exc))
+            return None
+
+    async def _attach_images(self, sections: list[DocSection], spec, title: str, doc_id: str,
+                             pid: str, written: list[str]) -> None:
+        """Generate up to ``spec.image_max`` FLUX images for the document (genre-gated) and set the
+        winning sections' ``image.path``. Enforces the cap server-side regardless of how many the
+        model requested; drops the rest. No-op (and clears requests) when the genre forbids images
+        or no HF key is configured. Mutates ``sections`` in place; never raises."""
+        cap = max(0, int(getattr(spec, "image_max", 0)))
+        if spec.image_policy == "none" or cap == 0:
+            for s in sections:
+                s.image = None
+            return
+        provider = get_provider_registry().get("huggingface")
+        if not getattr(provider, "is_configured", False):  # nothing to generate -> drop requests
+            for s in sections:
+                s.image = None
+            return
+        # Sections the model asked to illustrate; for hero/fullbleed genres, ensure a cover image.
+        cands = [s for s in sections if s.image and (s.image.prompt or "").strip()]
+        if not cands and spec.image_policy in ("hero", "fullbleed") and sections:
+            sections[0].image = DocImage(prompt=f"{title}", alt=title)
+            cands = [sections[0]]
+        cands = cands[:cap]
+        keep = {id(s) for s in cands}
+        for s in sections:  # enforce the cap: drop image requests beyond the winners
+            if id(s) not in keep:
+                s.image = None
+
+        fm = get_artifact_service(pid).fm
+
+        async def gen(i: int, sec: DocSection) -> None:
+            data = await self._flux_image(sec.image.prompt)
+            if not data:
+                return  # leave path None — the document still renders without this image
+            ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
+            rel = f"reports/documents/{doc_id}/images/{i}.{ext}"
+            try:
+                fm.write_bytes(rel, data, agent_id="documentation-agent")
+                sec.image.path = rel
+                written.append(rel)
+            except Exception as exc:  # noqa: BLE001 - a write failure just means no image
+                logger.warning("doc image write skipped: {}", repr(exc))
+
+        await asyncio.gather(*[gen(i, s) for i, s in enumerate(cands)])
+
+    async def _build_content(self, prompt: str, theme: str, fmt: str = "pdf", style: str = "professional") -> tuple[str, str, str, list[DocSection], str | None]:
         """Return (title, subtitle, theme, sections, fallback_note). fallback_note is None when the
         model wrote real content; otherwise it explains why this is a placeholder (so the caller can
         surface it instead of silently serving generic boilerplate). ``fmt`` tailors the guidance
         (a deck wants concise, visual slides; a document allows richer prose)."""
+        spec = structure_spec(style)
+        if spec.image_policy == "none":
+            image_rule = (
+                "- `image`: DO NOT include any image anywhere — this genre is strictly text-only. Always omit `image`."
+            )
+        else:
+            image_rule = (
+                f"- `image`: the WHOLE document may contain AT MOST {spec.image_max} image(s). Add an `image` ONLY to "
+                "the one or two section(s) where a real illustration genuinely adds value (a cover/hero concept, a "
+                'scene, a conceptual diagram). Shape: {"prompt": a concrete description of WHAT TO DEPICT visually '
+                "(scene/subject/style — never ask for text inside the image), \"alt\": short alt text}. Omit `image` on "
+                "every other section. Never request an image for mere decoration."
+            )
         if fmt == "pptx":
             format_rule = (
                 "- This is a PRESENTATION (slides): keep each section to a punchy heading, a SHORT body line, and "
@@ -145,8 +275,12 @@ class DocumentService:
             '{"title": str, "subtitle": str, "theme": str, "sections": [{"heading": str, "body": str, '
             '"bullets": [str], "table": {"headers": [str], "rows": [[str]]}, '
             '"chart": {"type": "column|bar|line|pie|area", "title": str, "categories": [str], '
-            '"series": [{"name": str, "values": [number]}]}}]}\n'
+            '"series": [{"name": str, "values": [number]}]}, '
+            '"image": {"prompt": str, "alt": str}}]}\n'
             "Rules:\n"
+            f"- STYLE & TONE: write the ENTIRE document in a {_resolve_style(style).upper()} style — "
+            f"{_STYLE_GUIDE[_resolve_style(style)]} Let this tone shape the wording, sentence length, headings, and "
+            "which bullets/tables/charts you include.\n"
             "- Stay STRICTLY on the requested topic. Write the actual content the user asked for — concrete, "
             "specific, and accurate (real steps, commands, examples as appropriate). Do NOT add generic filler, "
             "meta-commentary, or sections unrelated to the request.\n"
@@ -164,6 +298,7 @@ class DocumentService:
             "(measured trends, counts, percentages, comparisons). NEVER invent, estimate, or guess numbers just to "
             "draw a chart — if the topic is qualitative/instructional, use NO chart. Pie for parts-of-a-whole, "
             "line/area for trends, column/bar for comparisons. At most one chart per section.\n"
+            f"{image_rule}\n"
             '- Pick a `theme` whose mood fits the topic from EXACTLY this list: ["indigo","emerald","amber",'
             '"violet","slate","crimson","teal","ocean","sunset","forest","midnight","rose"] '
             "(e.g. finance/corporate -> slate/ocean/midnight; growth/eco/health -> emerald/forest/teal; "
@@ -179,6 +314,8 @@ class DocumentService:
             parsed = self._parse(out.get("content", ""))
             if parsed:
                 title, subtitle, suggested, sections = parsed
+                # Theme is USER-controlled and independent of the genre: an explicit palette wins;
+                # 'auto' falls back to the agent's topic-matched suggestion, else the default.
                 return title, subtitle, _resolve_theme(theme, suggested), sections, None
         # The model produced nothing usable (no/expired key, rate limit, or unparseable output).
         # Return an HONEST notice — never fabricate topic content that misleads the user.
@@ -215,8 +352,20 @@ class DocumentService:
                 bullets=bullets,
                 table=DocumentService._parse_table(s.get("table")),
                 chart=DocumentService._parse_chart(s.get("chart")),
+                image=DocumentService._parse_image(s.get("image")),
             ))
         return (title, subtitle, suggested, sections) if title and sections else None
+
+    @staticmethod
+    def _parse_image(raw: object) -> DocImage | None:
+        """Coerce a model-emitted image request into a DocImage (no path yet — generation fills it),
+        or None when there's no concrete visual prompt to generate from."""
+        if not isinstance(raw, dict):
+            return None
+        prompt = str(raw.get("prompt", "")).strip()
+        if not prompt:
+            return None
+        return DocImage(prompt=prompt[:600], alt=str(raw.get("alt", "")).strip()[:200], path=None)
 
     @staticmethod
     def _loads_document(text: str) -> dict | None:

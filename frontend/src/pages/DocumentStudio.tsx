@@ -2,12 +2,15 @@ import { useState, type FormEvent } from 'react'
 import {
   BarChart3,
   Check,
+  ChevronDown,
   Download,
   FileText,
   FileType2,
+  LayoutGrid,
   Loader2,
   Palette,
   Presentation,
+  Type,
   Wand2,
   X,
 } from 'lucide-react'
@@ -19,11 +22,12 @@ import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Stagger, StaggerItem } from '@/components/common/reveal'
+import { GenrePreview, GENRE_SHAPE } from '@/components/document/GenrePreview'
 import { cn } from '@/lib/utils'
 import { useDecideDocument, useDocuments, useGenerateDocument } from '@/hooks/useDocuments'
 import { documentUrl } from '@/lib/api/documents'
 import { useProjectStore } from '@/store/project'
-import type { DocFormat, DocTable, DocTheme, DocumentDraft } from '@/lib/api/types'
+import type { DocFont, DocFormat, DocStyle, DocTable, DocTheme, DocumentDraft } from '@/lib/api/types'
 
 const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
   { value: 'pptx', label: 'Presentation', icon: Presentation },
@@ -56,6 +60,75 @@ const THEMES: { value: DocTheme; label: string; swatch: string }[] = [
     swatch: THEME_HEX[k],
   })),
 ]
+
+/** Writing tones — shape HOW the document reads (distinct from the visual theme). */
+const STYLES: { value: DocStyle; label: string }[] = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'academic', label: 'Academic' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'informal', label: 'Informal' },
+  { value: 'conversational', label: 'Conversational' },
+  { value: 'technical', label: 'Technical' },
+  { value: 'business', label: 'Business' },
+  { value: 'creative', label: 'Creative' },
+  { value: 'simple', label: 'Simple' },
+  { value: 'complex', label: 'Complex' },
+  { value: 'concise', label: 'Concise' },
+  { value: 'detailed', label: 'Detailed' },
+  { value: 'persuasive', label: 'Persuasive' },
+  { value: 'informative', label: 'Informative' },
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'seo-friendly', label: 'SEO-Friendly' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'legal', label: 'Legal' },
+]
+const STYLE_LABEL: Record<string, string> = Object.fromEntries(STYLES.map((s) => [s.value, s.label]))
+
+/** Typeface families — user-chosen, independent of genre + theme. */
+const FONTS: { value: DocFont; label: string; sample: string; css: string }[] = [
+  { value: 'sans', label: 'Sans', sample: 'Aa', css: 'ui-sans-serif, system-ui, sans-serif' },
+  { value: 'serif', label: 'Serif', sample: 'Aa', css: 'Georgia, "Times New Roman", serif' },
+  { value: 'mono', label: 'Mono', sample: 'Aa', css: 'ui-monospace, "Consolas", monospace' },
+]
+const FONT_LABEL: Record<string, string> = Object.fromEntries(FONTS.map((f) => [f.value, f.label]))
+
+/**
+ * Genre gallery — pick the document genre by its LOOK. Each card shows a parametric SVG
+ * mock-up of that genre's structure (cover, columns, numbering, headings, bullets, image).
+ */
+function GenreGallery({ value, onPick }: { value: DocStyle; onPick: (v: DocStyle) => void }) {
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+      {STYLES.map((s) => {
+        const shape = GENRE_SHAPE[s.value]
+        const active = value === s.value
+        return (
+          <button
+            key={s.value}
+            type="button"
+            onClick={() => onPick(s.value)}
+            aria-pressed={active}
+            title={`${s.label} — ${shape.genre}`}
+            className={cn(
+              'focus-ring group flex flex-col items-center gap-1 rounded-lg border p-1.5 text-center transition-all duration-200',
+              active
+                ? 'border-omnivra-cyan/60 bg-omnivra-cyan/[0.06]'
+                : 'border-white/[0.06] bg-white/[0.02] hover:border-white/20',
+            )}
+          >
+            <GenrePreview shape={shape} selected={active} className="h-[68px] w-[54px]" />
+            <span className={cn('text-[10px] font-medium leading-tight', active ? 'text-omnivra-cyan' : 'text-[#d4d4d8]')}>
+              {s.label}
+            </span>
+            <span className="text-[8px] leading-tight text-[#71717a]">{shape.genre}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 /** Compact in-card preview of a section's table (header + first rows). */
 function MiniTable({ table }: { table: DocTable }) {
@@ -141,7 +214,9 @@ function DocumentCard({
               aria-label={`${draft.theme} theme`}
             />
           )}
-          <Chip label={FORMAT_LABEL[draft.format] ?? draft.format.toUpperCase()} accent="blue" />
+          {draft.style && <Chip label={STYLE_LABEL[draft.style] ?? draft.style} accent="violet" active />}
+          {draft.font && <Chip label={FONT_LABEL[draft.font] ?? draft.font} accent="emerald" active />}
+          <Chip label={FORMAT_LABEL[draft.format] ?? draft.format.toUpperCase()} accent="blue" active />
         </div>
       </div>
 
@@ -194,6 +269,14 @@ function DocumentCard({
                   {s.chart.title || `${s.chart.type} chart`}
                   {s.chart.categories && s.chart.categories.length > 0 && ` · ${s.chart.categories.length} pts`}
                 </div>
+              )}
+              {s.image?.path && (
+                <img
+                  src={documentUrl(s.image.path, projectId)}
+                  alt={s.image.alt || s.heading}
+                  loading="lazy"
+                  className="mt-1.5 h-20 w-full rounded-md border border-white/[0.08] object-cover"
+                />
               )}
             </div>
           ))}
@@ -260,6 +343,9 @@ export function DocumentStudio() {
   const [prompt, setPrompt] = useState('')
   const [format, setFormat] = useState<DocFormat>('pdf')
   const [theme, setTheme] = useState<DocTheme>('auto')
+  const [style, setStyle] = useState<DocStyle>('professional')
+  const [font, setFont] = useState<DocFont>('sans')
+  const [galleryOpen, setGalleryOpen] = useState(false)
 
   const { data: documents } = useDocuments()
   const generate = useGenerateDocument()
@@ -273,7 +359,7 @@ export function DocumentStudio() {
     e.preventDefault()
     const p = prompt.trim()
     if (!p || generating) return
-    generate.mutate({ prompt: p, format, theme }, { onSuccess: () => setPrompt('') })
+    generate.mutate({ prompt: p, format, theme, style, font }, { onSuccess: () => setPrompt('') })
   }
 
   const onDecide = (id: string, action: 'approve' | 'reject') => decide.mutate({ id, decision: { action } })
@@ -337,11 +423,74 @@ export function DocumentStudio() {
                 ))}
               </div>
 
+              {/* Font picker — typeface family, independent of genre + theme */}
+              <div className="inline-flex items-center gap-1.5" role="group" aria-label="Font family">
+                <Type className="h-3.5 w-3.5 text-[#71717a]" aria-hidden />
+                <div className="inline-flex rounded-md bg-omnivra-surface-2 p-0.5">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.value}
+                      type="button"
+                      aria-pressed={font === f.value}
+                      title={`${f.label} typeface`}
+                      onClick={() => setFont(f.value)}
+                      style={{ fontFamily: f.css }}
+                      className={cn(
+                        'focus-ring rounded px-2 py-1 text-xs font-medium transition-colors duration-200',
+                        font === f.value ? 'bg-omnivra-surface-3 text-omnivra-cyan' : 'text-[#a1a1aa] hover:text-[#e4e4e7]',
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Genre gallery toggle — pick the document genre by its look */}
+              <button
+                type="button"
+                onClick={() => setGalleryOpen((o) => !o)}
+                aria-expanded={galleryOpen}
+                title="Document genre"
+                className="focus-ring inline-flex items-center gap-1.5 rounded-md bg-omnivra-surface-2 px-2.5 py-1.5 text-xs font-medium text-[#e4e4e7] transition-colors duration-200 hover:text-omnivra-cyan"
+              >
+                <LayoutGrid className="h-3.5 w-3.5 text-[#71717a]" aria-hidden />
+                <GenrePreview shape={GENRE_SHAPE[style]} className="h-5 w-4" />
+                {STYLE_LABEL[style]}
+                <ChevronDown className={cn('h-3.5 w-3.5 transition-transform duration-200', galleryOpen && 'rotate-180')} aria-hidden />
+              </button>
+
               <Button type="submit" size="sm" disabled={generating || prompt.trim().length === 0} className="ml-auto">
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Wand2 className="h-4 w-4" aria-hidden />}
                 {generating ? 'Drafting…' : 'Generate document'}
               </Button>
             </div>
+
+            {/* Genre gallery — 20 visual mock-ups; structure only (theme + font are separate) */}
+            {galleryOpen && (
+              <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+                <div className="mb-2 flex items-center justify-between px-0.5">
+                  <p className="text-[11px] text-[#a1a1aa]">
+                    Pick a <span className="text-[#e4e4e7]">genre</span> — each is a different document structure (cover, columns, headings, dividers). Color & font are separate.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setGalleryOpen(false)}
+                    className="focus-ring rounded p-0.5 text-[#71717a] hover:text-[#e4e4e7]"
+                    aria-label="Close genre gallery"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+                <GenreGallery
+                  value={style}
+                  onPick={(v) => {
+                    setStyle(v)
+                    setGalleryOpen(false)
+                  }}
+                />
+              </div>
+            )}
 
             {generate.isError && (
               <p className="text-xs text-omnivra-pink" role="status" aria-live="polite">

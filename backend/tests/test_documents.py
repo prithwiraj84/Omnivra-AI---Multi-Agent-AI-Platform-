@@ -59,6 +59,32 @@ def test_generate_each_format(client: TestClient, fmt: str) -> None:
     assert body["status"] == "awaiting_approval"
 
 
+def test_generate_with_writing_style(client: TestClient) -> None:
+    """A chosen writing tone rides through to the draft (placeholder + terminal)."""
+    res = client.post("/api/documents/generate", json={"prompt": "a guide", "style": "legal"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["style"] == "legal"  # the 'generating' placeholder already carries it
+    done = client.get(f"/api/documents/{body['id']}").json()
+    assert done["style"] == "legal"
+
+
+def test_default_style_is_professional(client: TestClient) -> None:
+    body = client.post("/api/documents/generate", json={"prompt": "x"}).json()
+    assert body["style"] == "professional"
+
+
+def test_invalid_style_rejected(client: TestClient) -> None:
+    assert client.post("/api/documents/generate", json={"prompt": "x", "style": "jazzy"}).status_code == 422
+
+
+def test_resolve_style_and_guide_coverage() -> None:
+    from app.services.documents import _STYLE_GUIDE, _resolve_style
+
+    assert _resolve_style("LEGAL") == "legal" and _resolve_style("nope") == "professional"
+    assert len(_STYLE_GUIDE) == 20  # every offered style has a distinct instruction
+
+
 def test_unknown_format_defaults_to_pdf(client: TestClient) -> None:
     # An out-of-enum format is rejected by the request schema (422), never silently mis-rendered.
     res = client.post("/api/documents/generate", json={"prompt": "x", "format": "xlsx"})
@@ -211,6 +237,172 @@ def test_real_render_produces_file(tmp_path, monkeypatch, fmt: str) -> None:
     )
     assert result["ok"] and not result["stub"], result
     assert out.exists() and out.stat().st_size > 100
+
+
+def test_structure_specs_cover_all_genres_and_are_distinct() -> None:
+    """Every writing style maps to a StructureSpec, all 20 are present, and no two genres are
+    byte-identical (so each renders as a visibly different document)."""
+    from app.services.doc_render import STRUCTURE
+    from app.services.documents import _STYLE_GUIDE
+
+    assert set(STRUCTURE) == set(_STYLE_GUIDE)  # a structure for every offered genre, and vice-versa
+    assert len(STRUCTURE) == 20
+    assert len(set(STRUCTURE.values())) == 20, "two genres share an identical StructureSpec"
+    # the high-impact axes (cover/columns/numbering/heading/container/bullet/divider) must vary a lot
+    axes = {(s.cover, s.columns, s.numbering, s.heading_style, s.container, s.bullet, s.divider)
+            for s in STRUCTURE.values()}
+    assert len(axes) >= 16, "genres are too structurally similar"
+    for name, s in STRUCTURE.items():
+        assert s.image_max in (0, 1, 2), (name, s.image_max)
+        assert s.image_policy in {"none", "optional", "inline", "hero", "fullbleed"}, (name, s.image_policy)
+        if s.image_policy == "none":
+            assert s.image_max == 0, name
+
+
+def test_structure_spec_resolution_defaults() -> None:
+    from app.services.doc_render import STRUCTURE, structure_spec
+
+    assert structure_spec("LEGAL") is STRUCTURE["legal"]  # case-insensitive
+    assert structure_spec("not-a-genre") is STRUCTURE["professional"]  # unknown -> default
+    assert structure_spec(None) is STRUCTURE["professional"]
+
+
+def test_theme_is_independent_of_style() -> None:
+    """Color theme is USER-controlled, never derived from the genre: an explicit palette wins, 'auto'
+    falls back to the agent suggestion then the default — the style never changes it."""
+    from app.services.documents import _resolve_theme
+
+    assert _resolve_theme("crimson", None) == "crimson"          # explicit wins
+    assert _resolve_theme("auto", "forest") == "forest"          # auto -> agent suggestion
+    assert _resolve_theme("auto", None) == "indigo"              # auto, no suggestion -> default
+    assert _resolve_theme("nonsense", "teal") == "teal"          # bad request -> suggestion
+
+
+def test_resolve_font_defaults() -> None:
+    from app.services.documents import _resolve_font
+
+    assert _resolve_font("SERIF") == "serif"
+    assert _resolve_font("mono") == "mono"
+    assert _resolve_font("comic") == "sans"  # unknown -> sans
+    assert _resolve_font(None) == "sans"
+
+
+@pytest.mark.parametrize(
+    "font,fmt,pdf_core,office_font",
+    [
+        ("sans", "pdf", b"Helvetica", None),
+        ("mono", "pdf", b"Courier", None),
+        ("serif", "pdf", b"Times", None),
+        ("sans", "docx", None, "Calibri"),
+        ("mono", "docx", None, "Consolas"),
+        ("serif", "docx", None, "Georgia"),
+        ("sans", "pptx", None, "Calibri"),
+        ("mono", "pptx", None, "Consolas"),
+        ("serif", "pptx", None, "Georgia"),
+    ],
+)
+def test_user_font_is_applied_independently(tmp_path, monkeypatch, font, fmt, pdf_core, office_font) -> None:
+    """The USER's font choice (serif/sans/mono) lands in the output regardless of genre — Times/
+    Helvetica/Courier for PDF; Georgia/Calibri/Consolas for DOCX & PPTX."""
+    if not _engine_installed(fmt):
+        pytest.skip(f"{_FMT_MODULE[fmt]} not installed")
+    monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+    out = tmp_path / f"doc.{fmt}"
+    # 'legal' genre + every font: proves font is independent of the genre's own identity
+    result = render_document("Styled Title", _RICH_SECTIONS, out, fmt, subtitle="sub", style="legal", font=font)
+    assert result["ok"] and not result["stub"], result
+    if fmt == "pdf":
+        assert pdf_core in out.read_bytes()
+    elif fmt == "docx":
+        from docx import Document
+
+        fonts = {r.font.name for para in Document(str(out)).paragraphs for r in para.runs if r.font.name}
+        assert office_font in fonts, fonts
+    else:  # pptx
+        from pptx import Presentation
+
+        fonts = {
+            r.font.name
+            for s in Presentation(str(out)).slides
+            for sh in s.shapes if sh.has_text_frame
+            for para in sh.text_frame.paragraphs
+            for r in para.runs if r.font.name
+        }
+        assert office_font in fonts, fonts
+
+
+@pytest.mark.parametrize("style", ["professional", "academic", "marketing", "legal", "technical", "creative", "friendly", "informative"])
+def test_every_genre_renders_each_format(tmp_path, monkeypatch, style) -> None:
+    """A representative spread of genres renders a real, non-empty file in all three formats."""
+    for fmt in ("pdf", "docx", "pptx"):
+        if not _engine_installed(fmt):
+            continue
+        monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+        out = tmp_path / f"{style}.{fmt}"
+        result = render_document(f"{style} doc", _RICH_SECTIONS, out, fmt, subtitle="sub", style=style, theme="ocean")
+        assert result["ok"] and not result["stub"], (style, fmt, result)
+        assert out.exists() and out.stat().st_size > 500
+
+
+def test_image_cap_enforced_and_skips_without_key(tmp_path, monkeypatch) -> None:
+    """_attach_images caps generated images at spec.image_max, drops a text-only genre's requests,
+    and (no HF key) leaves every image.path None so the document still renders."""
+    import asyncio
+
+    from app.schemas.documents import DocImage, DocSection
+    from app.services.doc_render import structure_spec
+    from app.services.documents import get_document_service
+
+    svc = get_document_service()
+
+    async def run(style, n_requested):
+        secs = [DocSection(heading=f"S{i}", body="b", image=DocImage(prompt=f"img {i}"))
+                for i in range(n_requested)]
+        await svc._attach_images(secs, structure_spec(style), "Title", "doc_test", "default", [])
+        return secs
+
+    # text-only genre (legal): all image requests dropped
+    legal = asyncio.get_event_loop().run_until_complete(run("legal", 3))
+    assert all(s.image is None for s in legal)
+
+    # image genre (casual, max 2): no HF key -> requests kept but capped to 2, paths all None
+    casual = asyncio.get_event_loop().run_until_complete(run("casual", 4))
+    kept = [s for s in casual if s.image is not None]
+    assert len(kept) <= 2
+    assert all(s.image.path is None for s in kept)
+
+
+def test_section_image_embeds_when_path_present(tmp_path, monkeypatch) -> None:
+    """A section image with a resolvable path is embedded by every renderer (the file gains the image)."""
+    import struct
+    import zlib
+
+    img = tmp_path / "pic.png"
+    w, h = 64, 48
+    raw = bytearray()
+    for _ in range(h):
+        raw.append(0)
+        raw += bytes((30, 110, 200)) * w
+
+    def _chunk(typ, data):
+        c = typ + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    img.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+        + _chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + _chunk(b"IEND", b"")
+    )
+    sections = [{"heading": "Hero", "body": "Body.", "image": {"path": "pic.png", "alt": "x"}}]
+    for fmt in ("pdf", "docx", "pptx"):
+        if not _engine_installed(fmt):
+            continue
+        monkeypatch.delenv("OMNIVRA_DISABLE_RENDER", raising=False)
+        out = tmp_path / f"img.{fmt}"
+        r = render_document("Img", sections, out, fmt, subtitle="s", style="marketing", asset_root=tmp_path)
+        assert r["ok"] and not r["stub"], (fmt, r)
+        assert out.exists() and out.stat().st_size > 600
 
 
 def test_unknown_theme_falls_back_without_error(tmp_path, monkeypatch) -> None:

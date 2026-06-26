@@ -31,8 +31,8 @@ def generate(
     the draft leaves 'generating' (-> 'awaiting_approval'). Avoids the request-timeout failure.
     """
     svc = get_document_service()
-    pending = svc.begin_document(req.prompt, req.format, req.theme, project_id)
-    background_tasks.add_task(svc.generate_document, pending.id, req.prompt, pending.format, req.theme, project_id)
+    pending = svc.begin_document(req.prompt, req.format, req.theme, req.style, req.font, project_id)
+    background_tasks.add_task(svc.generate_document, pending.id, req.prompt, pending.format, req.theme, req.style, req.font, project_id)
     return pending
 
 

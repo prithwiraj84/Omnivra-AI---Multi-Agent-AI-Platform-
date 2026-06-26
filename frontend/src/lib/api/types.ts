@@ -333,6 +333,30 @@ export type DocTheme =
   | 'midnight'
   | 'rose'
 export type ChartType = 'column' | 'bar' | 'line' | 'pie' | 'area'
+/** Typeface family — user-chosen, independent of genre/theme. */
+export type DocFont = 'serif' | 'sans' | 'mono'
+/** Genre — drives HOW the document reads AND its visual STRUCTURE (distinct from theme + font). */
+export type DocStyle =
+  | 'casual'
+  | 'professional'
+  | 'academic'
+  | 'formal'
+  | 'informal'
+  | 'conversational'
+  | 'technical'
+  | 'business'
+  | 'creative'
+  | 'simple'
+  | 'complex'
+  | 'concise'
+  | 'detailed'
+  | 'persuasive'
+  | 'informative'
+  | 'neutral'
+  | 'friendly'
+  | 'seo-friendly'
+  | 'marketing'
+  | 'legal'
 
 /** A simple tabular block: a header row + data rows (rendered as a styled table). */
 export interface DocTable {
@@ -354,13 +378,21 @@ export interface DocChart {
   series: DocSeries[]
 }
 
-/** One section of a generated document: prose + optional bullet list + optional table/chart. */
+/** A generated illustration for a section (FLUX). `path` is set once the image is produced. */
+export interface DocImage {
+  prompt: string
+  alt?: string
+  path?: string | null
+}
+
+/** One section of a generated document: prose + optional bullet list + optional table/chart/image. */
 export interface DocSection {
   heading: string
   body: string
   bullets?: string[]
   table?: DocTable | null
   chart?: DocChart | null
+  image?: DocImage | null
 }
 
 /**
@@ -377,6 +409,8 @@ export interface DocumentDraft {
   title: string
   subtitle?: string
   theme?: string // resolved palette name (one of the 12 theme names; see DocTheme)
+  style?: string // genre the content was generated in
+  font?: string // typeface family (serif | sans | mono)
   status: DocStatus
   sections: DocSection[]
   artifacts: string[]
@@ -392,6 +426,8 @@ export interface DocumentRequest {
   prompt: string
   format: DocFormat
   theme?: DocTheme
+  style?: DocStyle
+  font?: DocFont
 }
 
 /** Request body for POST /api/documents/{id}/decision. */
