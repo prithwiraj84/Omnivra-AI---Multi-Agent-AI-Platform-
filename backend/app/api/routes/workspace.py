@@ -83,7 +83,16 @@ def list_apps(project_id: str = Depends(get_project_id)) -> list[AppInfo]:
 def run_app(req: AppRunRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> AppRunStatus:
     """Set up (per-app venv + pip install / npm install) and launch a generated project's backend +
     frontend on local ports. Returns immediately; setup/serving run in the background — poll /app/status.
-    No Docker, workspace-jailed, localhost-only, never raises."""
+    No Docker, workspace-jailed, localhost-only, never raises.
+
+    Disabled when APP_RUNNER_ENABLED=false (e.g. on a shared host like a Hugging Face Space, where the
+    launched app's localhost port isn't reachable and running generated code is a security/AUP risk) —
+    you can still browse and Download-as-ZIP; run the app locally instead."""
+    from app.core.config import get_settings
+
+    if not get_settings().app_runner_enabled:
+        return AppRunStatus(dir=req.dir, targets=[],
+                            note="The app runner is disabled in this deployment. Download the ZIP and run it locally.")
     return AppRunStatus(**app_runner.start_app(project_id, req.dir))
 
 

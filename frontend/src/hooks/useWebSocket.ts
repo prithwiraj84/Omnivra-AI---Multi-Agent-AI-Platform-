@@ -120,8 +120,10 @@ export function useWebSocket() {
       if (disposed) return
       setRealtimeStatus('connecting')
 
+      // Prod (Vercel -> remote backend): VITE_WS_URL points at the backend's wss .../ws. Dev: same
+      // origin (Vite proxies /ws -> ws://localhost:8000).
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      const url = `${proto}://${location.host}/ws`
+      const url = import.meta.env.VITE_WS_URL || `${proto}://${location.host}/ws`
 
       try {
         socket = new WebSocket(url)

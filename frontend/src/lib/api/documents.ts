@@ -3,7 +3,7 @@
  * instance (baseURL '/api'); the active project rides on the X-Project-Id header
  * set by the interceptor, so these are implicitly project-scoped.
  */
-import { api } from '@/lib/api/client'
+import { api, apiUrl } from '@/lib/api/client'
 import type { DocumentDecision, DocumentDraft, DocumentRequest } from '@/lib/api/types'
 
 /** Generate a document from a prompt in the chosen format. POST /documents/generate. */
@@ -31,5 +31,5 @@ export async function decideDocument(id: string, body: DocumentDecision): Promis
  */
 export function documentUrl(path: string, projectId: string): string {
   const clean = path.split('/').map(encodeURIComponent).join('/')
-  return `/api/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`
+  return apiUrl(`/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`)
 }

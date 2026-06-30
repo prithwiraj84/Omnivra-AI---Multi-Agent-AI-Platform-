@@ -35,6 +35,10 @@ for _k in (
 # the optional MoviePy engine is installed locally (a real encode takes ~tens of sec).
 os.environ["OMNIVRA_DISABLE_RENDER"] = "1"
 
+# Disable the dashboard payload cache so tests see live data on every call (the cache is a prod
+# optimization; with the session-scoped client it would otherwise return a stale snapshot).
+os.environ["DASHBOARD_CACHE_TTL"] = "0"
+
 
 @pytest.fixture(scope="session")
 def client() -> Iterator["object"]:

@@ -1,6 +1,19 @@
+---
+title: Omnivra AI Company OS — Backend
+emoji: 🏢
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Omnivra AI Company OS - Backend
 
-Python 3.11+ - FastAPI - Uvicorn - LangGraph - Pydantic - Tenacity. venv only (no Docker).
+Python 3.11+ - FastAPI - Uvicorn - LangGraph - Pydantic - Tenacity.
+
+> The YAML header above lets this folder run **as a Hugging Face Docker Space** (it builds the
+> `Dockerfile`). It's ignored by local dev. Full deploy steps: see the repo-root `DEPLOY.md`.
 
 ## Quickstart (Windows / PowerShell)
 ```powershell

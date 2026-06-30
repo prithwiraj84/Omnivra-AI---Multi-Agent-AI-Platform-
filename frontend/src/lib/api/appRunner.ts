@@ -3,7 +3,7 @@
  * pip install + uvicorn, frontend npm install + vite) on local ports, poll live status/logs, stop it,
  * and download it as a zip. Uses the shared axios instance (X-Project-Id header via interceptor).
  */
-import { api } from '@/lib/api/client'
+import { api, apiUrl } from '@/lib/api/client'
 import type { AppInfo, AppRunStatus } from '@/lib/api/types'
 
 /** One card per generated app (workflow), de-duplicated across category dirs. GET /workspace/app/list. */
@@ -35,5 +35,5 @@ export async function stopApp(body: { dir?: string; runKey?: string }): Promise<
  * query param because an <a href download> doesn't send the X-Project-Id header the interceptor adds.
  */
 export function appDownloadUrl(dir: string, projectId: string): string {
-  return `/api/workspace/app/download?dir=${encodeURIComponent(dir)}&projectId=${encodeURIComponent(projectId)}`
+  return apiUrl(`/workspace/app/download?dir=${encodeURIComponent(dir)}&projectId=${encodeURIComponent(projectId)}`)
 }

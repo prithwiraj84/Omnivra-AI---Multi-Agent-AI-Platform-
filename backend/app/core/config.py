@@ -84,6 +84,17 @@ class Settings(BaseSettings):
     # --- Redis / Upstash ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Deployment / performance ---
+    # The universal app-runner spawns venv/npm subprocesses and binds local ports. On a shared host
+    # (e.g. a Hugging Face Space) generated apps aren't reachable (single exposed port) AND running
+    # arbitrary generated code there is a security/AUP risk — so disable it in such deployments.
+    app_runner_enabled: bool = True
+    # Short TTL (seconds) for the aggregate dashboard payload so many polling clients share one rebuild
+    # instead of re-scanning every project per request. 0 disables the cache.
+    dashboard_cache_ttl: float = 2.0
+    # Max response size before gzip kicks in (bytes). The dashboard/artifact JSON compresses well.
+    gzip_min_size: int = 512
+
     # --- Orchestration safety ---
     max_recursion: int = 3
     provider_timeout_seconds: float = 60.0

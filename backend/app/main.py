@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app import __version__
@@ -83,6 +84,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Compress JSON/text responses (the dashboard + artifact payloads compress ~5-10x) — a cheap win
+# over a remote backend (HF Space) the Vercel frontend polls.
+app.add_middleware(GZipMiddleware, minimum_size=settings.gzip_min_size)
 
 app.add_middleware(
     CORSMiddleware,

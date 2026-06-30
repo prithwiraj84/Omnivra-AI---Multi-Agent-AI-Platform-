@@ -6,6 +6,7 @@ import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { NeonBadge } from '@/components/ui/neon-badge'
 import { StatusDot } from '@/components/ui/status-dot'
+import { backendOrigin } from '@/lib/api/client'
 import { useAuthConfig } from '@/hooks/useAuth'
 import { useUIStore, type RealtimeStatus } from '@/store/ui'
 
@@ -20,7 +21,7 @@ interface HealthInfo {
 
 /** Fetch GET /health directly (it lives at the root, outside the /api axios baseURL). */
 async function fetchHealth(): Promise<HealthInfo> {
-  const res = await fetch('/health')
+  const res = await fetch(`${backendOrigin}/health`)
   if (!res.ok) throw new Error(`health ${res.status}`)
   return (await res.json()) as HealthInfo
 }
