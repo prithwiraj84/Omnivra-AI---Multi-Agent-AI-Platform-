@@ -140,6 +140,36 @@ export interface RunProgramResult {
   note: string
 }
 
+/** Live state of one runnable target (a backend or frontend) in the universal app runner. */
+export type AppTargetStatus = 'idle' | 'installing' | 'starting' | 'running' | 'exited' | 'error' | 'stopped'
+export interface AppTarget {
+  runKey: string
+  rel: string
+  kind: 'python' | 'node'
+  name: string
+  framework: string
+  status: AppTargetStatus
+  port: number | null
+  url: string | null
+  exitCode: number | null
+  note: string
+  logsTail: string
+}
+
+/** Aggregate run status for a generated project directory (GET/POST /workspace/app/*). */
+export interface AppRunStatus {
+  dir: string
+  targets: AppTarget[]
+  note: string
+}
+
+/** One generated app (workflow), de-duplicated across category dirs to its best root. */
+export interface AppInfo {
+  wfId: string
+  dir: string
+  name: string
+}
+
 // --- Knowledge base + Memory + RAG (Phase 9) --------------------------------
 
 /**

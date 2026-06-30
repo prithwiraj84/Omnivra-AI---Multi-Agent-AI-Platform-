@@ -77,8 +77,11 @@ export function useWebSocket() {
           break
         case 'workflow':
         case 'approval': {
-          // Best-effort: surface workflow/approval frames as a feed line when the
-          // payload already looks like an activity item (carries id + agent/action).
+          // A workflow frame fires when a run starts, an agent picks up work, or it ends — refresh
+          // the dashboard so the workflow card shows the live status (which agent is working) at once
+          // instead of waiting for the next poll.
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+          // Best-effort: also surface it as a feed line when it carries an activity-shaped payload.
           const p = payload as Partial<ActivityDTO> | null
           if (p && p.id != null && (p.agent || p.action)) {
             queryClient.setQueryData<DashboardData>(['dashboard'], (old) =>

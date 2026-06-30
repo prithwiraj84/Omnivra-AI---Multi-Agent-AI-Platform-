@@ -72,7 +72,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
                   provider="openrouter", model="nvidia/nemotron-3-super-120b-a12b:free",
                   responsibilities=["schema design", "migrations", "pgvector"]),
         AgentSpec(id="frontend-engineer", name="Frontend Engineer", department=Department.ENGINEERING,
-                  provider="openrouter", model="poolside/laguna-m.1:free",
+                  provider="openrouter", model="poolside/laguna-xs.2:free",
                   responsibilities=["React components", "state", "styling"]),
         AgentSpec(id="backend-engineer", name="Backend Engineer", department=Department.ENGINEERING,
                   provider="openrouter", model="z-ai/glm-4.5-air:free",

@@ -92,6 +92,34 @@ def update_run_progress(
         logger.debug("update_run_progress({}) skipped: {}", workflow_id, exc)
 
 
+_NON_TERMINAL = {"running", "planning", "pending"}
+
+
+def sweep_orphaned_runs() -> int:
+    """Finalize runs left in a non-terminal status (running/planning/pending) by a process restart.
+
+    A run executes IN-PROCESS, so any run still marked 'running' at startup was orphaned when the
+    backend stopped mid-run — there is no reaper, so it would otherwise sit 'running' forever and the
+    dashboard would show its last agent (e.g. Frontend Engineer) 'working' permanently. Mark each as
+    'failed' with an explanatory error so live status reflects reality. Returns the count swept."""
+    swept = 0
+    for pid in list_project_dir_ids():
+        store = get_workflow_store(pid)
+        for run in store.list():
+            if run.status in _NON_TERMINAL:
+                run.status = "failed"
+                run.current_agent = None
+                run.errors = [*(run.errors or []), "orphaned by a backend restart (no run was in flight)"]
+                try:
+                    store.save(run)
+                    swept += 1
+                except Exception as exc:  # noqa: BLE001 - best-effort cleanup, never block startup
+                    logger.debug("sweep of orphaned run {} failed: {}", run.workflow_id, exc)
+    if swept:
+        logger.info("Swept {} orphaned non-terminal workflow run(s) to 'failed' on startup", swept)
+    return swept
+
+
 def find_run(workflow_id: str) -> tuple[str, RunResult] | None:
     """Locate a run across all projects by id. Returns (project_id, run) or None.
 

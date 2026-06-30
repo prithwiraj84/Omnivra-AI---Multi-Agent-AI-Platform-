@@ -29,6 +29,11 @@ from app.schemas.orchestration import (  # noqa: F401
     RunResult,
 )
 from app.schemas.workspace import (  # noqa: F401
+    AppInfo,
+    AppRunRequest,
+    AppRunStatus,
+    AppStopRequest,
+    AppTarget,
     Artifact,
     ArtifactContent,
     RunProgramRequest,

@@ -6,9 +6,10 @@ work. All outputs accumulate into ``agent_outputs`` via the state reducer.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Awaitable, Callable
 
-from app.agents.registry import get_agent
+from app.agents.registry import AGENT_REGISTRY, AgentKind, get_agent
 from app.agents.runner import is_code_agent, run_agent
 from app.core.logging import logger
 from app.data.seed import DEPARTMENT_ACCENT
@@ -58,6 +59,10 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
         for agent_id in plan:
             # LIVE status: this specialist is the one working RIGHT NOW (polled dashboard reads it).
             update_run_progress(pid, workflow_id, current_agent=agent_id, delegations=plan)
+            # Push a live 'workflow' frame so the dashboard updates the card immediately (which agent
+            # is working) instead of waiting for the next poll — the UI invalidates the dashboard on this.
+            await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": "running",
+                                    "currentAgent": get_agent(agent_id).name})
             base = _build_context(prior + outputs)
             context = f"{memory_block}\n\n{base}".strip() if memory_block else base
             # Builder agents need a far bigger budget to emit complete code files (512 is prose-sized).
@@ -77,6 +82,34 @@ def make_delegate_node(registry: ProviderRegistry) -> DelegateNode:
                     "icon": "Bot",
                 },
             )
+
+        # --- System Ops pass -------------------------------------------------------------------
+        # The internal SYSTEM agents (classify / route / recall / notify / analyze) are kind=SYSTEM,
+        # so the planner never delegates to them and they'd sit idle forever. Run them here — in
+        # PARALLEL, best-effort, with a tiny budget — so they genuinely participate and show 'working'.
+        # A system agent failure NEVER breaks the build (it's just skipped).
+        sys_ids = [aid for aid, spec in AGENT_REGISTRY.items() if spec.kind == AgentKind.SYSTEM]
+        if sys_ids:
+            sys_context = _build_context(prior + outputs)
+
+            async def _run_system(agent_id: str) -> AgentOutput | None:
+                try:
+                    update_run_progress(pid, workflow_id, current_agent=agent_id)
+                    spec = get_agent(agent_id)
+                    await emit("workflow", {"workflowId": workflow_id, "projectId": pid,
+                                            "status": "running", "currentAgent": spec.name})
+                    result = await run_agent(agent_id, task, registry=registry, context=sys_context, max_tokens=256)
+                    await emit("activity", {"id": f"run-{agent_id}", "agent": spec.name, "action": "responded",
+                                            "time": "just now",
+                                            "accent": DEPARTMENT_ACCENT.get(spec.department.value, "cyan"),
+                                            "icon": "Cpu"})
+                    return result
+                except Exception as exc:  # noqa: BLE001 - a system agent must never break the build
+                    logger.debug("system-ops agent {} skipped: {}", agent_id, exc)
+                    return None
+
+            sys_outputs = await asyncio.gather(*[_run_system(a) for a in sys_ids])
+            outputs.extend([o for o in sys_outputs if o])
 
         return OmnivraState(
             status=WorkflowStatus.RUNNING,

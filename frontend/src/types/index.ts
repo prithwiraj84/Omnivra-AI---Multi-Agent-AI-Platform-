@@ -70,6 +70,7 @@ export interface WorkflowItem {
   progress: number
   accent: Accent
   icon: LucideIcon
+  currentAgent?: string | null // the agent working RIGHT NOW (live, while In Progress)
 }
 
 export interface TaskPoint {

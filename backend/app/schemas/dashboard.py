@@ -49,6 +49,7 @@ class WorkflowItem(CamelModel):
     progress: int
     accent: str
     icon: str
+    current_agent: str | None = None  # the agent working RIGHT NOW (live, while In Progress)
 
 
 class TaskPoint(CamelModel):

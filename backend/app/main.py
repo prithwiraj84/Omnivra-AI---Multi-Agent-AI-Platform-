@@ -48,6 +48,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     default_fm = get_artifact_service(DEFAULT_PROJECT).fm  # ensures the default project's subdirs
     app.state.file_manager = FileManager(ws_root)
     app.state.settings = settings
+
+    # Reap runs orphaned by a previous restart (still marked 'running' with no live process) so the
+    # dashboard never shows a stale agent 'working' forever.
+    from app.services.workflow_store import sweep_orphaned_runs
+
+    sweep_orphaned_runs()
     logger.info("Workspace sandbox ready at {} (default project at {})", ws_root, default_fm.root)
     logger.info("Agent registry loaded: {} agents", len(AGENT_REGISTRY))
 
@@ -63,6 +69,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.realtime_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await app.state.realtime_task
+
+    # Kill any apps the universal runner launched so no generated server outlives the backend.
+    from app.services.app_runner import stop_all
+
+    stop_all()
 
 
 app = FastAPI(

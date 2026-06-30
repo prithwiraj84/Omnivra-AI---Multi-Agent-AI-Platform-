@@ -186,6 +186,9 @@ class DocumentService:
         if not getattr(provider, "is_configured", False):
             return None
         try:
+            from app.services.usage import record_media_call
+
+            record_media_call("image")  # count document illustrations in the dashboard Media Services card
             return await asyncio.wait_for(
                 provider.generate_image(prompt=f"{text}. {_IMG_STYLE}"), timeout=_IMG_TIMEOUT,
             )

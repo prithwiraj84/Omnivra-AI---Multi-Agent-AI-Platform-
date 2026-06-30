@@ -183,8 +183,17 @@ def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
         wf = []
         for r in runs[:6]:
             label, progress, accent = view.get(r.status, ("In Progress", 60, "cyan"))
+            current_agent = None
+            if r.status in ("running", "planning", "pending"):
+                # LIVE progress: agents finished / total delegated, so the bar actually advances; and
+                # surface which agent is working RIGHT NOW so the card isn't static while it runs.
+                total = len(r.delegations) or len(r.plan) or (len(r.agent_outputs) + 1)
+                done = len(r.agent_outputs)
+                progress = max(8, min(95, round(100 * done / max(total, 1)))) if total else 60
+                cur = r.current_agent
+                current_agent = (AGENT_REGISTRY[cur].name if cur in AGENT_REGISTRY else cur) if cur else None
             dept = AGENT_REGISTRY[r.agent_outputs[0].agent_id].department.value if r.agent_outputs and r.agent_outputs[0].agent_id in AGENT_REGISTRY else "Orchestration"
-            wf.append(WorkflowItem(id=r.workflow_id, name=(r.task or "Workflow")[:48], department=dept, status=label, progress=progress, accent=accent, icon="LayoutDashboard"))
+            wf.append(WorkflowItem(id=r.workflow_id, name=(r.task or "Workflow")[:48], department=dept, status=label, progress=progress, accent=accent, icon="LayoutDashboard", current_agent=current_agent))
         o["workflows"] = wf
 
     # --- tasks: distribution by project (%), totals, execution chart ---
@@ -253,10 +262,11 @@ def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
             ModelUsage(id=MODEL_LABEL.get(m, m), pct=round(100 * c / mtotal), calls=c, color=CATEGORICAL[i % len(CATEGORICAL)])
             for i, (m, c) in enumerate(sorted(model_calls.items(), key=lambda kv: kv[1], reverse=True)[:6])
         ]
+        # Always surface all three media services (with a 0 count when unused) so the card shows data
+        # rather than collapsing to empty before any media has been generated this session.
         o["media_services"] = [
-            MediaService(name=_MEDIA_META[k][0], provider=_MEDIA_META[k][1], calls=media_calls[k], delta="", accent=_MEDIA_META[k][2], icon=_MEDIA_META[k][3])
+            MediaService(name=_MEDIA_META[k][0], provider=_MEDIA_META[k][1], calls=int(media_calls.get(k, 0)), delta="", accent=_MEDIA_META[k][2], icon=_MEDIA_META[k][3])
             for k in ("image", "tts", "stt")
-            if media_calls.get(k)
         ]
 
     # --- achievements (real milestones) ---
