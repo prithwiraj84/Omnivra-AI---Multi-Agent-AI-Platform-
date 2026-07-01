@@ -226,3 +226,63 @@ mirroring and FastAPI WS for interactive/streaming control.
 - [ ] A test `rpc('match_knowledge', ...)` returns rows after inserting one
       embedded chunk.
 - [ ] Realtime publication lists the dashboard tables.
+
+---
+
+## 10. Frontend OAuth — Google / GitHub sign-in (Phase 2)
+
+The frontend signs users in with **Google** or **GitHub** through Supabase Auth (PKCE flow).
+It is **optional**: with no `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (or placeholder
+values) the client is `null`, the social buttons are disabled, and the app stays in open mode.
+
+### 10.1 Frontend env (`frontend/.env.local`, and Vercel for prod)
+```env
+VITE_SUPABASE_URL=https://<ref>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon public key>   # browser-safe (RLS-scoped)
+```
+Vite inlines these at **build time** — a change needs a redeploy.
+
+> **Backend-auth interplay.** OAuth establishes a *frontend* Supabase session; it does not
+> mint a backend bearer token. The recommended deployment keeps the backend in **open mode**
+> (`AUTH_ENABLED=false`, the default) and uses Supabase OAuth as the frontend gate — then
+> `AuthGate` lets an OAuth session in and the API is open. If you also set backend
+> `AUTH_ENABLED=true`, an OAuth user reaches the UI (AuthGate accepts the Supabase session)
+> but backend API calls will 401 until the backend is taught to verify the Supabase JWT
+> (future work). Don't enable backend auth alongside OAuth unless you add that verification.
+
+### 10.2 Allow your redirect URLs
+**Dashboard → Authentication → URL Configuration**:
+- **Site URL**: your prod origin, e.g. `https://<your-app>.vercel.app`
+- **Redirect URLs** (add every origin you use — one per line):
+  - `http://localhost:5173/auth/callback`
+  - `https://<your-app>.vercel.app/auth/callback`
+
+The app always redirects back to **`<origin>/auth/callback`** (see `lib/supabase.ts` →
+`authRedirectTo()`), which finalizes the session and forwards to `/dashboard`.
+
+### 10.3 Enable the providers
+**Dashboard → Authentication → Providers**:
+
+**Google** — enable, then paste a Google OAuth **Client ID** + **Client Secret**
+(Google Cloud Console → APIs & Services → Credentials → *OAuth client ID* → *Web application*).
+In Google's client, set the **Authorized redirect URI** to the value Supabase shows on the
+Google provider page: `https://<ref>.supabase.co/auth/v1/callback`.
+
+**GitHub** — enable, then paste a GitHub OAuth App **Client ID** + **Client Secret**
+(GitHub → Settings → Developer settings → OAuth Apps → *New OAuth App*). Set the app's
+**Authorization callback URL** to `https://<ref>.supabase.co/auth/v1/callback`.
+
+> The provider redirect URI is Supabase's `/auth/v1/callback` (NOT the app's
+> `/auth/callback`). Supabase receives the provider code, then bounces the browser to your
+> app's `/auth/callback` from the allow-list in 10.2.
+
+### 10.4 Profiles
+Section 4's `handle_new_user()` trigger already copies `full_name` + `avatar_url` from
+`raw_user_meta_data` into `public.profiles` on first sign-in — which is exactly what the
+topbar/account menu render (Google `full_name`/`picture`, GitHub `name`/`user_name`/`avatar_url`).
+
+### 10.5 Verify
+- [ ] `/login` shows **Continue with Google/GitHub** (enabled) + the credentials fallback.
+- [ ] Clicking a provider redirects to it, then back to `/auth/callback`, then `/dashboard`.
+- [ ] The topbar avatar shows the provider photo/initials and **Sign out** clears the session.
+- [ ] A row appears in `auth.users` (and `public.profiles`) after first sign-in.

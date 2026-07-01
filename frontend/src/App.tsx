@@ -2,7 +2,9 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/app-layout'
 import { AuthGate } from '@/components/auth/auth-gate'
+import { useInitSupabaseAuth } from '@/hooks/useSupabaseAuth'
 import { Landing } from '@/pages/Landing'
+import { AuthCallback } from '@/pages/AuthCallback'
 import { Dashboard } from '@/pages/Dashboard'
 import { Workspace } from '@/pages/Workspace'
 import { Documents } from '@/pages/Documents'
@@ -38,11 +40,15 @@ const DEPARTMENT_ROUTES: { path: string; slug: string }[] = [
 ]
 
 export default function App() {
+  // Install the Supabase OAuth listener once for the whole app (no-op when unconfigured).
+  useInitSupabaseAuth()
+
   return (
     <Routes>
       {/* Public routes — the marketing landing + sign-in live outside the protected AppLayout shell. */}
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
 
       {/* Everything else is guarded by AuthGate (a no-op in open mode). The app's home is /dashboard. */}
       <Route

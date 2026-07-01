@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom'
 import { motion, useMotionValueEvent, useScroll } from 'framer-motion'
 import { ArrowRight, Boxes } from 'lucide-react'
 
+import { useSupabaseAuth } from '@/hooks/useSupabaseAuth'
 import { cn } from '@/lib/utils'
 
 const LINKS = [
@@ -18,6 +19,7 @@ export function LandingNav() {
   const { scrollY } = useScroll()
   const [scrolled, setScrolled] = useState(false)
   useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 24))
+  const { isAuthenticated } = useSupabaseAuth()
 
   return (
     <motion.header
@@ -52,17 +54,19 @@ export function LandingNav() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link
-            to="/login"
-            className="focus-ring hidden rounded-md px-3 py-2 text-sm font-medium text-[#d4d4d8] transition-colors hover:text-white sm:block"
-          >
-            Sign in
-          </Link>
+          {!isAuthenticated && (
+            <Link
+              to="/login"
+              className="focus-ring hidden rounded-md px-3 py-2 text-sm font-medium text-[#d4d4d8] transition-colors hover:text-white sm:block"
+            >
+              Sign in
+            </Link>
+          )}
           <Link
             to="/dashboard"
             className="focus-ring group inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-omnivra-bg-root transition-transform duration-200 hover:scale-[1.03] active:scale-95"
           >
-            Launch app
+            {isAuthenticated ? 'Open app' : 'Launch app'}
             <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden />
           </Link>
         </div>

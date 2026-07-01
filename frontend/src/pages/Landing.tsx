@@ -5,7 +5,7 @@
  * department grid + stat counters, and a glowing CTA. Everything honors prefers-reduced-motion.
  */
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   animate,
   motion,
@@ -33,6 +33,7 @@ import {
   FilePlus2,
   Github,
   ImagePlus,
+  Loader2,
   Megaphone,
   Play,
   RotateCcw,
@@ -44,6 +45,7 @@ import {
 
 import { LandingNav } from '@/components/landing/landing-nav'
 import { ProductMockup } from '@/components/landing/product-mockup'
+import { useSupabaseAuth, type OAuthProvider } from '@/hooks/useSupabaseAuth'
 import { cn } from '@/lib/utils'
 
 const HeroCanvas = lazy(() => import('@/components/landing/hero-canvas'))
@@ -212,6 +214,28 @@ function GoogleMark() {
 // --- page -------------------------------------------------------------------
 export function Landing() {
   const reduce = useReducedMotion() ?? false
+  const navigate = useNavigate()
+  const { isConfigured, signInWithProvider } = useSupabaseAuth()
+  const [oauthPending, setOauthPending] = useState<OAuthProvider | null>(null)
+  const [oauthError, setOauthError] = useState<string | null>(null)
+
+  // CTA "Continue with …": start OAuth directly when Supabase is set up, else route to the
+  // sign-in page (which also carries the credentials fallback). Shows a pending state during
+  // the async round-trip and surfaces failures in place instead of silently bouncing away.
+  async function startOAuth(provider: OAuthProvider) {
+    if (!isConfigured) {
+      navigate('/login')
+      return
+    }
+    setOauthError(null)
+    setOauthPending(provider)
+    try {
+      await signInWithProvider(provider) // browser redirects away on success
+    } catch {
+      setOauthError('Could not start sign-in. Make sure this provider is enabled in your Supabase project.')
+      setOauthPending(null)
+    }
+  }
 
   // Only mount the 3D scene when WebGL is actually available (skips it in jsdom/tests + on GPUs that
   // can't; the CSS HeroGlow shows instead). Starts false so the very first paint is the fallback.
@@ -491,21 +515,34 @@ export function Landing() {
             </h2>
             <p className="mt-4 text-[#a1a1aa]">Sign in and hand your first task to the CEO. It’s free to run on your own keys.</p>
             <div className="mt-8 flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center">
-              <Link
-                to="/login"
-                className="focus-ring inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white backdrop-blur-glass transition-colors hover:border-white/25 sm:w-auto"
+              <button
+                type="button"
+                onClick={() => startOAuth('google')}
+                disabled={oauthPending !== null}
+                className="focus-ring inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white backdrop-blur-glass transition-colors hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                <GoogleMark />
+                {oauthPending === 'google' ? <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden /> : <GoogleMark />}
                 Continue with Google
-              </Link>
-              <Link
-                to="/login"
-                className="focus-ring inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white backdrop-blur-glass transition-colors hover:border-white/25 sm:w-auto"
+              </button>
+              <button
+                type="button"
+                onClick={() => startOAuth('github')}
+                disabled={oauthPending !== null}
+                className="focus-ring inline-flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white backdrop-blur-glass transition-colors hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                <Github className="h-[18px] w-[18px]" aria-hidden />
+                {oauthPending === 'github' ? (
+                  <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden />
+                ) : (
+                  <Github className="h-[18px] w-[18px]" aria-hidden />
+                )}
                 Continue with GitHub
-              </Link>
+              </button>
             </div>
+            {oauthError && (
+              <p role="alert" aria-live="polite" className="mt-3 text-xs text-omnivra-pink">
+                {oauthError}
+              </p>
+            )}
             <Link
               to="/dashboard"
               className="focus-ring group mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-omnivra-cyan hover:text-white"

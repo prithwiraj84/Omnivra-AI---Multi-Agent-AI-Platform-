@@ -1,6 +1,8 @@
+import { useNavigate } from 'react-router-dom'
+
 import { LiveIndicator } from '@/components/dashboard/live-indicator'
 import { ProjectSwitcher } from '@/components/layout/project-switcher'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -11,7 +13,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { IconButton } from '@/components/ui/icon-button'
 import { KbdHint } from '@/components/ui/kbd-hint'
+import { useSupabaseAuth } from '@/hooks/useSupabaseAuth'
+import { avatarUrl, displayName, initials } from '@/lib/user-profile'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth'
 import { useUIStore } from '@/store/ui'
 import { Bell, LogOut, Menu, Search, Settings, User } from 'lucide-react'
 
@@ -30,6 +35,21 @@ export interface TopbarProps extends React.HTMLAttributes<HTMLElement> {
  */
 export function Topbar({ notifications = 12, onSearch, className, ...props }: TopbarProps) {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
+  const navigate = useNavigate()
+  const { user, isAuthenticated, signOut } = useSupabaseAuth()
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+
+  // Signed-in identity (Google/GitHub) drives the avatar + account menu; falls back to the
+  // single-admin label in open mode.
+  const name = isAuthenticated ? displayName(user) : 'Omnivra'
+  const subtitle = isAuthenticated ? user?.email ?? 'Signed in' : 'Super Admin'
+  const photo = avatarUrl(user)
+
+  async function handleSignOut() {
+    await signOut() // clears the Supabase session (no-op when unconfigured)
+    clearAuth() // clears the backend bearer token too
+    navigate('/', { replace: true })
+  }
 
   return (
     <header
@@ -64,7 +84,7 @@ export function Topbar({ notifications = 12, onSearch, className, ...props }: To
       <div className="ml-auto flex items-center gap-1.5">
         <LiveIndicator className="mr-1.5" />
         <IconButton icon={Bell} aria-label="Notifications" badge={notifications} />
-        <IconButton icon={Settings} aria-label="Settings" />
+        <IconButton icon={Settings} aria-label="Settings" onClick={() => navigate('/settings')} />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -74,32 +94,36 @@ export function Topbar({ notifications = 12, onSearch, className, ...props }: To
               className="focus-ring ml-1 rounded-full"
             >
               <Avatar className="h-9 w-9">
+                {photo && <AvatarImage src={photo} alt={name} />}
                 <AvatarFallback className="bg-omnivra-surface-3 text-omnivra-cyan">
-                  OM
+                  {isAuthenticated ? initials(name) : 'OM'}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[14rem]">
             <DropdownMenuLabel>
-              <span className="block text-sm font-semibold normal-case tracking-normal text-[#fafafa]">
-                Omnivra
+              <span className="block truncate text-sm font-semibold normal-case tracking-normal text-[#fafafa]">
+                {name}
               </span>
-              <span className="block text-xs font-normal normal-case tracking-normal text-[#a1a1aa]">
-                Super Admin
+              <span className="block truncate text-xs font-normal normal-case tracking-normal text-[#a1a1aa]">
+                {subtitle}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
               <User />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
               <Settings />
               Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-omnivra-red/90 focus:text-omnivra-red data-[highlighted]:text-omnivra-red [&_svg]:text-omnivra-red/80">
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="text-omnivra-red/90 focus:text-omnivra-red data-[highlighted]:text-omnivra-red [&_svg]:text-omnivra-red/80"
+            >
               <LogOut />
               Sign out
             </DropdownMenuItem>
