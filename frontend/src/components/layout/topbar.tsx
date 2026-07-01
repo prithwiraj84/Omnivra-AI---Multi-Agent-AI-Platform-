@@ -111,7 +111,7 @@ export function Topbar({ notifications = 12, onSearch, className, ...props }: To
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate('/settings')}>
+            <DropdownMenuItem onClick={() => navigate('/profile')}>
               <User />
               Profile
             </DropdownMenuItem>

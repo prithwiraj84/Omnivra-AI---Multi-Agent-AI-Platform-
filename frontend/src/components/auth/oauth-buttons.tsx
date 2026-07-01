@@ -10,7 +10,7 @@ import { useSupabaseAuth, type OAuthProvider } from '@/hooks/useSupabaseAuth'
 import { cn } from '@/lib/utils'
 
 /** Google's multicolor "G" mark. */
-function GoogleMark() {
+export function GoogleMark() {
   return (
     <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden>
       <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.5-1.7 4.4-5.5 4.4-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.2.8 3.9 1.5l2.7-2.6C16.9 3 14.7 2 12 2 6.9 2 2.8 6.1 2.8 12S6.9 22 12 22c6.1 0 8.4-4.3 8.4-6.5 0-.4 0-.7-.1-1.1H12z" />

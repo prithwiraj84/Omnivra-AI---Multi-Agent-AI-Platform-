@@ -75,6 +75,10 @@ workspace/.state/vectors/
 workspace/.state/workflows/
 workspace/.state/*.json
 workspace/.state/.migrated_v2_projects
+# In-app provider API keys (set via Integrations → API keys). NEVER commit these.
+# (already covered by *.json above; listed explicitly for safety + the atomic-write temp file.)
+workspace/.state/provider_keys.json
+workspace/.state/provider_keys.json.tmp
 workspace/**/*.log
 # Keep the directory skeleton + READMEs so the tree exists on clone.
 !workspace/

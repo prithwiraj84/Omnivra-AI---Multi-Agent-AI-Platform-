@@ -41,6 +41,14 @@ describe('App shell', () => {
     expect(screen.getByPlaceholderText(/Search anything/i)).toBeTruthy()
   })
 
+  it('renders the profile page on /profile', () => {
+    // Offline/open mode (no Supabase session): the profile shows the local-admin state inside
+    // the app chrome without crashing.
+    renderApp('/profile')
+    expect(screen.getByPlaceholderText(/Search anything/i)).toBeTruthy()
+    expect(screen.getAllByText(/Local admin/i).length).toBeGreaterThan(0)
+  })
+
   it('renders the settings status page on /settings', () => {
     // Open mode: AuthGate renders children (the config query is pending/fails in jsdom),
     // so /settings mounts inside the chrome and shows its status cards.

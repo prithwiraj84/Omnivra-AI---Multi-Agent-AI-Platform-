@@ -63,6 +63,14 @@ export function useSupabaseAuth() {
     await supabase.auth.signOut()
   }, [])
 
+  /** Update the user's display name (stored in Supabase user_metadata.full_name). */
+  const updateDisplayName = useCallback(async (fullName: string) => {
+    if (!supabase) throw new Error('Supabase is not configured')
+    const { error } = await supabase.auth.updateUser({ data: { full_name: fullName } })
+    if (error) throw error
+    // onAuthStateChange fires USER_UPDATED → the store refreshes the user automatically.
+  }, [])
+
   return {
     session,
     user,
@@ -71,5 +79,6 @@ export function useSupabaseAuth() {
     isAuthenticated: Boolean(user),
     signInWithProvider,
     signOut,
+    updateDisplayName,
   }
 }

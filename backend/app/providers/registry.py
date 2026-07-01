@@ -13,33 +13,49 @@ from app.providers.google_ai import GoogleAIProvider
 from app.providers.groq import GroqProvider
 from app.providers.huggingface import HuggingFaceProvider
 from app.providers.openrouter import OpenRouterProvider
+from app.services.provider_keys import resolve_provider_key
+from app.services.secrets_store import get_secrets_store
 
 PROVIDER_NAMES = ("google_ai", "openrouter", "groq", "huggingface")
 
 
 class ProviderRegistry:
-    """Lazily constructs and caches provider clients from Settings."""
+    """Lazily constructs and caches provider clients from Settings.
+
+    Secret keys come from ``resolve_provider_key`` (stored overrides env), NOT straight from
+    Settings, so a key the admin saves in the UI is honored. Cached clients are refreshed in
+    place when the SecretsStore epoch advances, so a newly-saved/cleared key takes effect on the
+    very next call — no process restart, no reconnect.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._cache: dict[str, BaseProvider] = {}
+        self._epoch: dict[str, int] = {}
 
     def get(self, name: str) -> BaseProvider:
-        if name in self._cache:
-            return self._cache[name]
-        client = self._build(name)
-        self._cache[name] = client
+        epoch = get_secrets_store().epoch
+        client = self._cache.get(name)
+        if client is None:
+            client = self._build(name)
+            self._cache[name] = client
+            self._epoch[name] = epoch
+            return client
+        if self._epoch.get(name) != epoch:
+            # A key was saved/cleared since we built this client — refresh its pool in place.
+            client.set_keys(resolve_provider_key(name))
+            self._epoch[name] = epoch
         return client
 
     def _build(self, name: str) -> BaseProvider:
         s = self._settings
         if name == "google_ai":
             return GoogleAIProvider(
-                api_key=s.google_ai_studio_api_key, timeout=s.provider_timeout_seconds
+                api_key=resolve_provider_key("google_ai"), timeout=s.provider_timeout_seconds
             )
         if name == "openrouter":
             return OpenRouterProvider(
-                api_key=s.openrouter_api_key,
+                api_key=resolve_provider_key("openrouter"),
                 base_url=s.openrouter_base_url,
                 site_url=s.openrouter_site_url,
                 app_name=s.openrouter_app_name,
@@ -47,13 +63,13 @@ class ProviderRegistry:
             )
         if name == "groq":
             return GroqProvider(
-                api_key=s.groq_api_key,
+                api_key=resolve_provider_key("groq"),
                 base_url=s.groq_base_url,
                 timeout=s.provider_timeout_seconds,
             )
         if name == "huggingface":
             return HuggingFaceProvider(
-                api_key=s.huggingface_api_key,
+                api_key=resolve_provider_key("huggingface"),
                 endpoint=s.huggingface_inference_endpoint,
             )
         raise KeyError(f"Unknown provider: {name!r}. Expected one of {PROVIDER_NAMES}")

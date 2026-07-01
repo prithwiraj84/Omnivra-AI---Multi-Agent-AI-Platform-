@@ -170,6 +170,17 @@ class BaseProvider(abc.ABC):
         """True when at least one API key is present (drives 'online' dots on the dashboard)."""
         return bool(self._keys)
 
+    def set_keys(self, api_key: str | None) -> None:
+        """Replace the key pool in place (used when the admin saves/clears a key in the UI).
+
+        Cheap and connection-safe: the provider reads ``self._keys`` fresh on the next call,
+        so no client rebuild/reconnect is needed. Resets the rotation cursor + cooldowns since
+        the pool changed."""
+        with self._klock:
+            self._keys = parse_api_keys(api_key)
+            self._cursor = 0
+            self._cooldowns.clear()
+
     @property
     def _api_key(self) -> str | None:
         """The first key in the pool — backward-compatible accessor for single-key call sites."""
@@ -180,15 +191,22 @@ class BaseProvider(abc.ABC):
         """Number of keys in the pool (for diagnostics / dashboards)."""
         return len(self._keys)
 
-    def _attempt_order(self) -> list[int]:
-        """Indices of keys to try this call: round-robin, preferring keys NOT in cooldown, but
-        always returning at least one so a call is still attempted when every key is cooling."""
+    def _attempt_order(self) -> list[str]:
+        """The KEYS to try this call: round-robin, preferring keys NOT in cooldown, but always
+        returning at least one so a call is still attempted when every key is cooling.
+
+        Returns a stable SNAPSHOT of key strings (taken under the lock), not indices — so a
+        concurrent ``set_keys`` that swaps ``self._keys`` mid-call can never shift an index out
+        from under the caller (was an IndexError race). An empty pool yields ``[]``."""
         now = time.monotonic()
         with self._klock:
-            n = len(self._keys)
-            order = [(self._cursor + i) % n for i in range(n)]
+            keys = list(self._keys)  # snapshot; immune to a later self._keys rebind
+            n = len(keys)
+            if n == 0:
+                return []
+            order = [keys[(self._cursor + i) % n] for i in range(n)]
             self._cursor = (self._cursor + 1) % n
-            fresh = [i for i in order if self._cooldowns.get(self._keys[i], 0.0) <= now]
+            fresh = [k for k in order if self._cooldowns.get(k, 0.0) <= now]
         return fresh or order
 
     def _cool(self, key: str, seconds: float) -> None:
@@ -200,28 +218,29 @@ class BaseProvider(abc.ABC):
         an auth/bad-key error; return the first success. Raises the last error if every key fails
         (the ``with_provider_retry`` decorator then applies backoff and may rotate again). A genuine
         non-auth bad-request raises immediately (rotating keys could not help)."""
-        if not self._keys:
+        attempts = self._attempt_order()  # stable snapshot of keys to try
+        if not attempts:
             raise FatalProviderError(f"{self.name}: no API key configured")
+        total = len(attempts)
         last: BaseException | None = None
-        for idx in self._attempt_order():
-            key = self._keys[idx]
+        for i, key in enumerate(attempts):
             try:
                 return await run(key)
             except RateLimitError as exc:
                 last = exc
                 self._cool(key, _RATE_COOLDOWN_SEC)
-                logger.warning("{}: API key #{}/{} rate-limited; rotating to the next key", self.name, idx + 1, len(self._keys))
+                logger.warning("{}: API key #{}/{} rate-limited; rotating to the next key", self.name, i + 1, total)
             except TransientProviderError as exc:
                 # timeout / 5xx / connection blip — not the key's fault (no cooldown), but try the next
                 # key in-loop too (a healthy key may succeed immediately); if all fail, propagate so the
                 # with_provider_retry decorator applies backoff.
                 last = exc
-                logger.warning("{}: API key #{}/{} transient error; trying the next key", self.name, idx + 1, len(self._keys))
+                logger.warning("{}: API key #{}/{} transient error; trying the next key", self.name, i + 1, total)
             except FatalProviderError as exc:
                 if _is_auth_error(exc):
                     last = exc
                     self._cool(key, _AUTH_COOLDOWN_SEC)
-                    logger.warning("{}: API key #{}/{} rejected (auth); rotating", self.name, idx + 1, len(self._keys))
+                    logger.warning("{}: API key #{}/{} rejected (auth); rotating", self.name, i + 1, total)
                     continue
                 raise  # non-auth fatal (e.g. bad request) — every key would fail identically
         raise last if last is not None else FatalProviderError(f"{self.name}: all API keys failed")

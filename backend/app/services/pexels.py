@@ -11,7 +11,6 @@ from pathlib import Path
 
 import httpx
 
-from app.core.config import get_settings
 from app.core.logging import logger
 from app.providers.base import (
     FatalProviderError,
@@ -19,12 +18,13 @@ from app.providers.base import (
     TransientProviderError,
     with_provider_retry,
 )
+from app.services.provider_keys import resolve_provider_key
 
 _SEARCH_URL = "https://api.pexels.com/videos/search"
 
 
 def is_configured() -> bool:
-    return bool(get_settings().pexels_api_key)
+    return bool(resolve_provider_key("pexels"))
 
 
 def _pick_portrait_link(videos: list[dict]) -> str | None:
@@ -41,7 +41,7 @@ def _pick_portrait_link(videos: list[dict]) -> str | None:
 
 @with_provider_retry(max_attempts=3)
 async def _search(query: str) -> str | None:
-    key = get_settings().pexels_api_key
+    key = resolve_provider_key("pexels")
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.get(

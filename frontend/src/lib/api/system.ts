@@ -40,6 +40,46 @@ export async function getProviders(): Promise<ProviderStatus> {
 }
 
 /**
+ * ProviderKeyStatus — the wire shape of one row from GET /system/provider-keys. Reports where
+ * the ACTIVE key comes from (`source`) and, for a user-entered key, a masked hint (`masked`).
+ * Raw key values are NEVER returned by the API.
+ */
+export interface ProviderKeyStatus {
+  id: string
+  label: string
+  category: 'llm' | 'media'
+  envVar: string
+  docUrl: string
+  /** A key is present in backend/.env for this provider. */
+  envSet: boolean
+  /** A key was saved in-app (stored under workspace/.state). */
+  storedSet: boolean
+  /** Which key is actually used: stored overrides env. */
+  source: 'stored' | 'env' | 'none'
+  configured: boolean
+  /** Masked hint of the STORED key (e.g. "sk-o…wxyz"); null when none is stored. */
+  masked: string | null
+}
+
+/** Per-provider key status (env / stored / none + masked). GET /system/provider-keys. */
+export async function listProviderKeys(): Promise<ProviderKeyStatus[]> {
+  const { data } = await api.get<ProviderKeyStatus[]>('/system/provider-keys')
+  return data
+}
+
+/** Store (or replace) a provider key. PUT /system/provider-keys/{id}. Returns the new status. */
+export async function setProviderKey(id: string, value: string): Promise<ProviderKeyStatus> {
+  const { data } = await api.put<ProviderKeyStatus>(`/system/provider-keys/${id}`, { value })
+  return data
+}
+
+/** Remove a stored provider key (falls back to env). DELETE /system/provider-keys/{id}. */
+export async function clearProviderKey(id: string): Promise<ProviderKeyStatus> {
+  const { data } = await api.delete<ProviderKeyStatus>(`/system/provider-keys/${id}`)
+  return data
+}
+
+/**
  * Checkpoint — one node in the cp-NNNN checkpoint lineage (GET /system/checkpoints).
  * `phase` is the build phase number (null for non-phase checkpoints); `phaseTitle`
  * is its human label; `status` is the lifecycle string (e.g. "committed"); `parent`

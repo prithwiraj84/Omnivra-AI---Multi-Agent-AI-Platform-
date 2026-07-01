@@ -32,3 +32,26 @@ export function initials(name: string): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
+
+/** The OAuth provider that signed the user in ('google' | 'github' | 'email' | …). */
+export function providerOf(user: User | null | undefined): string {
+  if (!user) return 'email'
+  const app = (user.app_metadata ?? {}) as { provider?: string }
+  if (app.provider) return app.provider
+  const first = user.identities?.[0]?.provider
+  return first ?? 'email'
+}
+
+/** A human label for a provider id. */
+export function providerLabel(provider: string): string {
+  const map: Record<string, string> = { google: 'Google', github: 'GitHub', email: 'Email' }
+  return map[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
+/** Format an ISO timestamp as a short, locale-aware date (or '—' when absent/invalid). */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}

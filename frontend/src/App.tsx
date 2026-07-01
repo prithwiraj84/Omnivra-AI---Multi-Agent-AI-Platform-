@@ -12,6 +12,7 @@ import { DocumentStudio } from '@/pages/DocumentStudio'
 import { KnowledgeBase } from '@/pages/KnowledgeBase'
 import { Memory } from '@/pages/Memory'
 import { Settings } from '@/pages/Settings'
+import { Profile } from '@/pages/Profile'
 import { Login } from '@/pages/Login'
 import { Projects } from '@/pages/Projects'
 import { Tasks } from '@/pages/Tasks'
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/profile" element={<Profile />} />
 
         <Route path="/departments/quality" element={<SecurityCenter />} />
         <Route path="/departments/marketing" element={<MarketingCenter />} />
