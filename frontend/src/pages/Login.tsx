@@ -1,12 +1,12 @@
-import { type FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { Lock, LogIn, User } from 'lucide-react'
+import { type FormEvent, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
-import { GlassCard } from '@/components/ui/glass-card'
-import { Button } from '@/components/ui/button'
-import { BrandLogo } from '@/components/layout/brand-logo'
 import { Reveal } from '@/components/common/reveal'
+import { BrandLogo } from '@/components/layout/brand-logo'
+import { Button } from '@/components/ui/button'
+import { GlassCard } from '@/components/ui/glass-card'
 import { useLogin } from '@/hooks/useAuth'
 
 /** Map a login failure to an on-brand message (401 -> bad creds, else generic). */
@@ -33,7 +33,7 @@ export function Login() {
     event.preventDefault()
     loginMutation.mutate(
       { username: username.trim(), password },
-      { onSuccess: () => navigate('/', { replace: true }) },
+      { onSuccess: () => navigate('/dashboard', { replace: true }) },
     )
   }
 

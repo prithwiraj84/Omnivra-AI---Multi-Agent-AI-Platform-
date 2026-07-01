@@ -1,19 +1,19 @@
-import { Bell, LogOut, Menu, Search, Settings, User } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useUIStore } from '@/store/ui'
-import { IconButton } from '@/components/ui/icon-button'
-import { KbdHint } from '@/components/ui/kbd-hint'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LiveIndicator } from '@/components/dashboard/live-indicator'
 import { ProjectSwitcher } from '@/components/layout/project-switcher'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { IconButton } from '@/components/ui/icon-button'
+import { KbdHint } from '@/components/ui/kbd-hint'
+import { cn } from '@/lib/utils'
+import { useUIStore } from '@/store/ui'
+import { Bell, LogOut, Menu, Search, Settings, User } from 'lucide-react'
 
 export interface TopbarProps extends React.HTMLAttributes<HTMLElement> {
   /** Notification count rendered on the bell badge. */

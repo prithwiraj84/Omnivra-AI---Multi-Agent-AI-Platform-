@@ -18,13 +18,20 @@ function renderApp(route = '/') {
 
 describe('App shell', () => {
   it('mounts the command-center shell without crashing', () => {
-    renderApp('/')
+    renderApp('/dashboard')
     // Sidebar brand mark proves the layout chrome rendered.
     expect(screen.getAllByText(/OMNIVRA/i).length).toBeGreaterThan(0)
   })
 
-  it('renders the dashboard greeting on the index route', () => {
+  it('renders the marketing landing on / (public front page)', () => {
     renderApp('/')
+    expect(screen.getByText(/Run an entire company/i)).toBeTruthy()
+    // The landing sits OUTSIDE the app chrome — no topbar search.
+    expect(screen.queryByPlaceholderText(/Search anything/i)).toBeNull()
+  })
+
+  it('renders the dashboard greeting on /dashboard', () => {
+    renderApp('/dashboard')
     expect(screen.getByText(/Good morning, Omnivra/i)).toBeTruthy()
   })
 
@@ -54,12 +61,12 @@ describe('App shell', () => {
 
   it('lets the auth gate render children in open mode (no redirect to /login)', () => {
     // The default (open) mode must not bounce to /login: the dashboard greeting renders.
-    renderApp('/')
+    renderApp('/dashboard')
     expect(screen.getByText(/Good morning, Omnivra/i)).toBeTruthy()
   })
 
   it('renders the live indicator reflecting the realtime channel state', () => {
-    renderApp('/')
+    renderApp('/dashboard')
     // The topbar LiveIndicator is part of the persistent chrome. Its accessible name
     // ("Realtime: <state>") proves the WebSocket hook is wired into the UI store —
     // the exact state depends on whether the test host exposes a WebSocket global.
@@ -68,7 +75,7 @@ describe('App shell', () => {
   })
 
   it('renders the Phase-3 dashboard sections', () => {
-    renderApp('/')
+    renderApp('/dashboard')
     for (const label of [
       /AI Agents Status/i,
       /Active Workflows/i,
@@ -156,7 +163,7 @@ describe('App shell', () => {
   it('renders the run-task control in the greeting hero', () => {
     // RunTask dispatches a task to the CEO agent. Offline (jsdom), the run/awaiting
     // queries simply never resolve — the control must still render without crashing.
-    renderApp('/')
+    renderApp('/dashboard')
     expect(screen.getByRole('button', { name: /Assign to CEO/i })).toBeTruthy()
     expect(screen.getByLabelText(/Task to assign to the CEO agent/i)).toBeTruthy()
   })

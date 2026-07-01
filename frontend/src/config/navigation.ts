@@ -30,7 +30,7 @@ export const navGroups: NavGroup[] = [
   {
     label: null,
     items: [
-      { label: 'Dashboard', to: '/', icon: LayoutDashboard },
+      { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
       { label: 'Workspace', to: '/workspace', icon: LayoutGrid },
       { label: 'Projects', to: '/projects', icon: FolderGit2 },
       { label: 'Tasks', to: '/tasks', icon: ListChecks },

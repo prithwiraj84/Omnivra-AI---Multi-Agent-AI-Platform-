@@ -1,13 +1,13 @@
-import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, KeyRound, Radio, ShieldCheck } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { GlassCard } from '@/components/ui/glass-card'
-import { SectionHeader } from '@/components/ui/section-header'
 import { NeonBadge } from '@/components/ui/neon-badge'
+import { SectionHeader } from '@/components/ui/section-header'
 import { StatusDot } from '@/components/ui/status-dot'
-import { backendOrigin } from '@/lib/api/client'
 import { useAuthConfig } from '@/hooks/useAuth'
+import { backendOrigin } from '@/lib/api/client'
 import { useUIStore, type RealtimeStatus } from '@/store/ui'
 
 /** Liveness/summary shape from GET /health (served at the app root, not under /api). */

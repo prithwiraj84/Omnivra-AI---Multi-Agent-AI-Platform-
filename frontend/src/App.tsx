@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { AppLayout } from '@/components/layout/app-layout'
 import { AuthGate } from '@/components/auth/auth-gate'
+import { Landing } from '@/pages/Landing'
 import { Dashboard } from '@/pages/Dashboard'
 import { Workspace } from '@/pages/Workspace'
 import { Documents } from '@/pages/Documents'
@@ -39,10 +40,11 @@ const DEPARTMENT_ROUTES: { path: string; slug: string }[] = [
 export default function App() {
   return (
     <Routes>
-      {/* Public route — sign-in lives outside the protected AppLayout shell. */}
+      {/* Public routes — the marketing landing + sign-in live outside the protected AppLayout shell. */}
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
 
-      {/* Everything else is guarded by AuthGate (a no-op in open mode). */}
+      {/* Everything else is guarded by AuthGate (a no-op in open mode). The app's home is /dashboard. */}
       <Route
         element={
           <AuthGate>
@@ -50,7 +52,7 @@ export default function App() {
           </AuthGate>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route path="/dashboard" element={<Dashboard />} />
 
         <Route path="/projects" element={<Projects />} />
         <Route path="/tasks" element={<Tasks />} />
@@ -76,7 +78,7 @@ export default function App() {
           <Route key={path} path={path} element={<Department slug={slug} />} />
         ))}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
   )
