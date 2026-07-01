@@ -17,7 +17,7 @@ from typing import Any
 
 from app.agents.registry import AGENT_REGISTRY
 from app.core.logging import logger
-from app.data.seed import ACCENT_HEX, CATEGORICAL, DEPARTMENT_ACCENT, MODEL_LABEL, PROVIDER_LABEL
+from app.data.seed import ACCENT_HEX, CATEGORICAL, DEPARTMENT_ACCENT, MODEL_LABEL, PROVIDER_LABEL, seed_agents
 from app.providers.registry import get_provider_registry
 from app.schemas.dashboard import (
     Achievement,
@@ -174,8 +174,13 @@ def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
         return "idle"
 
     def _agents() -> None:
-        o["agents"] = [a.model_copy(update={"status": _status_for(a.id)}) for a in base.agents]
-        o["system_ops"] = [a.model_copy(update={"status": _status_for(a.id)}) for a in base.system_ops]
+        # Build the agent grid from the code AGENT_REGISTRY (the documented source of truth) rather
+        # than base.agents — a Supabase `agents` table can drift behind the running roster (e.g. an
+        # older seed without the System-Ops/Media agents), which would silently hide agents. This
+        # guarantees every current agent shows with its live working/idle/needs_approval status.
+        primary, system = seed_agents()
+        o["agents"] = [a.model_copy(update={"status": _status_for(a.id)}) for a in primary]
+        o["system_ops"] = [a.model_copy(update={"status": _status_for(a.id)}) for a in system]
 
     # --- workflows (real runs) ---
     def _workflows() -> None:

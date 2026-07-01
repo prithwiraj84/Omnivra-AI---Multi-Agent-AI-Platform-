@@ -6,14 +6,17 @@ import axios from 'axios'
 import { TOKEN_STORAGE_KEY } from '@/store/auth'
 import { getActiveProjectId } from '@/store/project'
 
-/** Absolute `/api` base. Dev: '/api' (Vite proxy). Prod: VITE_API_BASE_URL (e.g. https://host/api). */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '/api'
+// VITE_API_BASE_URL is the backend ORIGIN (e.g. http://localhost:8000 or https://<space>.hf.space).
+// Empty in dev -> same-origin '/api' via the Vite proxy. We tolerate a value that already ends in
+// '/api' (either convention works) and never double up the prefix.
+const _raw = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') || ''
+/** Backend origin WITHOUT the /api suffix — for root routes like /health. '' in dev (root-relative). */
+export const backendOrigin = _raw.endsWith('/api') ? _raw.slice(0, -4) : _raw
+/** Absolute `/api` base for axios. Dev: '/api' (Vite proxy). Prod: '<origin>/api'. */
+export const API_BASE_URL = backendOrigin ? `${backendOrigin}/api` : '/api'
 
 /** Build an absolute backend URL for an /api path used OUTSIDE axios (<a href>, <img src>). */
 export const apiUrl = (path: string): string => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
-
-/** Backend origin WITHOUT the /api suffix — for root routes like /health. */
-export const backendOrigin = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

@@ -51,9 +51,9 @@ The `backend/` folder is **already a Space**: `backend/Dockerfile` builds it and
 ## 3) Frontend → Vercel
 
 1. <https://vercel.com/new> → import the repo → **Root Directory = `frontend`** (Vercel auto-detects Vite; `frontend/vercel.json` adds the SPA fallback).
-2. **Environment Variables** (Production):
+2. **Environment Variables** (Production) — `VITE_API_BASE_URL` is the backend **origin** (no `/api`; the app appends it):
    ```
-   VITE_API_BASE_URL = https://<user>-<space>.hf.space/api
+   VITE_API_BASE_URL = https://<user>-<space>.hf.space
    VITE_WS_URL       = wss://<user>-<space>.hf.space/ws
    ```
    (see `frontend/.env.production.example`)
