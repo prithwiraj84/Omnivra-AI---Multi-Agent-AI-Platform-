@@ -4,7 +4,7 @@
  * (uvicorn) and frontend (vite) on local ports — so it runs without the "ModuleNotFoundError" the
  * single-file runner hit. Plus live status + logs, a real Stop, and Download-as-ZIP (app files only).
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Box,
   Download,
@@ -19,7 +19,6 @@ import {
 
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { NeonBadge, type BadgeTone } from '@/components/ui/neon-badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -90,6 +89,7 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
   const run = useRunApp()
   const stop = useStopApp(dir)
   const [showLogs, setShowLogs] = useState(false)
+  const logRef = useRef<HTMLDivElement>(null)
 
   const targets = data?.targets ?? []
   const anyActive = targets.some((t) => ['installing', 'starting', 'running'].includes(t.status))
@@ -100,6 +100,11 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
     .join('\n\n')
   // Auto-open logs while it's installing/starting so progress (and any error) is visible immediately.
   const logsOpen = showLogs || setting
+
+  // Keep the log view pinned to the newest lines — the reason a target exited is at the BOTTOM.
+  useEffect(() => {
+    if (logsOpen && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
+  }, [logs, logsOpen])
 
   return (
     <GlassCard className="flex flex-col gap-3">
@@ -159,11 +164,11 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
             {logsOpen ? 'Hide' : 'Show'} logs
           </button>
           {logsOpen && (
-            <ScrollArea className="max-h-[20rem]">
+            <div ref={logRef} className="max-h-[20rem] overflow-auto">
               <pre className="whitespace-pre-wrap break-words px-3 pb-3 font-mono text-[11px] leading-relaxed text-[#a1a1aa]">
                 {logs}
               </pre>
-            </ScrollArea>
+            </div>
           )}
         </div>
       )}

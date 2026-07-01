@@ -132,6 +132,53 @@ def test_detect_node_classifies_framework(tmp_path, pkg, expected) -> None:
     assert app_runner._detect_node(tmp_path) == expected
 
 
+def test_read_into_strips_ansi_escape_codes() -> None:
+    from app.services.app_runner import _ANSI
+
+    assert _ANSI.sub("", "\x1b[32mhello\x1b[0m") == "hello"
+    assert _ANSI.sub("", "\x1b[2K\x1b[1Gprogress 50%") == "progress 50%"
+
+
+def test_cra_scaffold_makes_a_loose_app_buildable(tmp_path) -> None:
+    """A generated 'CRA' app with a bare App component at the root (no src/ or public/) gets a proper
+    public/index.html + a src/ entry that mounts React, so react-scripts can actually build it."""
+    from app.services.app_runner import AppProc, _ensure_cra_scaffold
+
+    (tmp_path / "package.json").write_text('{"scripts":{"start":"react-scripts start"},"dependencies":{"react-scripts":"4.0.3"}}', encoding="utf-8")
+    (tmp_path / "index.js").write_text("import React from 'react';\nfunction App(){return null;}\nexport default App;\n", encoding="utf-8")
+    (tmp_path / "styles.css").write_text("body{margin:0}", encoding="utf-8")
+    entry = AppProc(key="k", project_id="p", rel="r", kind="node", name="frontend", framework="cra")
+    _ensure_cra_scaffold(tmp_path, entry)
+    assert (tmp_path / "public" / "index.html").exists()
+    idx = (tmp_path / "src" / "index.js").read_text(encoding="utf-8")
+    assert "ReactDOM" in idx and "getElementById('root')" in idx
+    assert (tmp_path / "src" / "App.js").exists()  # the root index component was relocated to src/App.js
+
+
+def test_cra_scaffold_leaves_a_real_cra_app_untouched(tmp_path) -> None:
+    from app.services.app_runner import AppProc, _ensure_cra_scaffold
+
+    (tmp_path / "public").mkdir()
+    (tmp_path / "public" / "index.html").write_text("<div id='root'></div>", encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    real = "import ReactDOM from 'react-dom';\nReactDOM.render(null, document.getElementById('root'));\n"
+    (tmp_path / "src" / "index.js").write_text(real, encoding="utf-8")
+    entry = AppProc(key="k", project_id="p", rel="r", kind="node", name="f", framework="cra")
+    _ensure_cra_scaffold(tmp_path, entry)
+    assert (tmp_path / "src" / "index.js").read_text(encoding="utf-8") == real  # untouched
+
+
+def test_media_response_is_not_gzipped(client) -> None:
+    """The /workspace/media FileResponse must opt OUT of gzip (identity) so Range/206 video seeking
+    isn't corrupted by the app-wide GZipMiddleware."""
+    from app.services.artifacts import get_artifact_service
+
+    get_artifact_service("__default__").fm.write_bytes("reports/media/probe.bin", b"x" * 4000, agent_id="reel-automation")
+    r = client.get("/api/workspace/media/reports/media/probe.bin", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200
+    assert r.headers.get("content-encoding") in (None, "identity")  # NOT gzip
+
+
 def test_list_apps_groups_one_card_per_workflow() -> None:
     """The same wf_* scattered across docs/backend/frontend collapses to ONE app at its best root."""
     pid = "grouping_test"

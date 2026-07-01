@@ -58,7 +58,10 @@ def read_media(path: str, project_id: str = Depends(get_project_id)) -> FileResp
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"No media {path!r}") from exc
-    return FileResponse(target)
+    # Content-Encoding: identity opts this OUT of the app-wide GZipMiddleware. Gzipping a binary
+    # FileResponse is wasteful (mp4/png are already compressed) AND corrupts Range/206 playback: the
+    # compressor drops Content-Length and leaves a now-wrong Content-Range, so <video> seeking breaks.
+    return FileResponse(target, headers={"Content-Encoding": "identity"})
 
 
 @router.post("/run", response_model=RunProgramResult)
@@ -127,5 +130,6 @@ def download_app(dir: str, project_id: str = Depends(get_project_id)) -> Respons
         raise HTTPException(status_code=404, detail=f"No such project dir {dir!r}") from exc
     return Response(
         content=data, media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        # identity: skip GZipMiddleware — a .zip is already compressed, and re-gzipping wastes CPU.
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Content-Encoding": "identity"},
     )

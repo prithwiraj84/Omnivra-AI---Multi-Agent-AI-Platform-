@@ -122,14 +122,98 @@ def _spawn_kwargs() -> dict:
     return {"start_new_session": True}
 
 
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")  # strip terminal color/cursor escape codes
+
+
 def _read_into(proc: subprocess.Popen, entry: AppProc) -> None:
-    """Pump a process's merged stdout/stderr into the target's ring buffer until EOF."""
+    """Pump a process's merged stdout/stderr into the target's ring buffer until EOF, stripping ANSI
+    escape codes + carriage returns so the log panel shows clean, readable text (npm/webpack spew a
+    lot of color + progress control codes that otherwise clutter — and bloat — the UI)."""
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
-            _log(entry, line)
+            clean = _ANSI.sub("", line).replace("\r", "").rstrip("\n")
+            _log(entry, clean)
     except Exception:  # noqa: BLE001 - reader must never crash the supervisor
         pass
+
+
+_CRA_INDEX_HTML = (
+    "<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n"
+    "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n"
+    "    <title>App</title>\n  </head>\n  <body>\n"
+    "    <noscript>You need to enable JavaScript to run this app.</noscript>\n"
+    "    <div id=\"root\"></div>\n  </body>\n</html>\n"
+)
+_CRA_ENTRY_JS = (
+    "import React from 'react';\nimport ReactDOM from 'react-dom';\nimport App from '{app_import}';\n"
+    "ReactDOM.render(<App />, document.getElementById('root'));\n"
+)
+
+
+def _has_render(path: Path) -> bool:
+    try:
+        t = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return False
+    return "ReactDOM" in t or "createRoot" in t or ".render(" in t
+
+
+def _ensure_cra_scaffold(app_dir: Path, entry: AppProc) -> None:
+    """Make a generated CRA app runnable. react-scripts REQUIRES public/index.html (with a #root div)
+    and a src/index entry that MOUNTS React — generated apps frequently ship neither (loose files at
+    the root, or an index.js that is really just an App component), so react-scripts exits code 1
+    before serving. Scaffold what's missing (best-effort; never raises). Also makes the ZIP complete."""
+    import shutil
+
+    try:
+        pub = app_dir / "public" / "index.html"
+        if not pub.exists():
+            pub.parent.mkdir(parents=True, exist_ok=True)
+            pub.write_text(_CRA_INDEX_HTML, encoding="utf-8")
+            _log(entry, "Scaffolded public/index.html (was missing).")
+
+        src = app_dir / "src"
+        entry_exts = (".js", ".jsx", ".tsx")
+        if any((src / f"index{e}").exists() and _has_render(src / f"index{e}") for e in entry_exts):
+            return  # a real CRA entry already mounts React — leave it alone
+
+        src.mkdir(parents=True, exist_ok=True)
+        roots = [p for p in app_dir.iterdir()
+                 if p.is_file() and p.suffix in (*entry_exts, ".ts", ".css")
+                 and not p.name.endswith(".config.js") and not p.name.endswith(".config.ts")]
+        # An 'App' component = exports default + does NOT itself mount React.
+        app_stem = None
+        for p in roots + ([q for q in src.iterdir() if q.is_file()] if src.exists() else []):
+            try:
+                txt = p.read_text(encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                continue
+            if "export default" in txt and not _has_render(p):
+                app_stem = "App" if p.name.lower().startswith("index") else p.stem
+                break
+        # Relocate the root source/styles into src/ (react-scripts compiles ONLY from src/); rename an
+        # index component to App.js so we can own src/index.js as the entry.
+        for p in roots:
+            dest = src / (f"App{p.suffix}" if (app_stem == "App" and p.name.lower().startswith("index")) else p.name)
+            if not dest.exists():
+                shutil.copyfile(p, dest)
+        app_import = "./App" if any((src / f"App{e}").exists() for e in entry_exts) else f"./{app_stem or 'App'}"
+        (src / "index.js").write_text(_CRA_ENTRY_JS.format(app_import=app_import), encoding="utf-8")
+        _log(entry, f"Scaffolded a CRA src/ entry (mounts {app_import}) so the app can build + serve.")
+    except Exception as exc:  # noqa: BLE001 - scaffolding must never break the run
+        _log(entry, f"(CRA scaffold skipped: {type(exc).__name__})")
+
+
+def _node_major() -> int:
+    """Best-effort Node.js major version (0 if unknown) — decides whether CRA needs the legacy
+    OpenSSL provider (react-scripts 4/webpack-4 crash on Node >= 17 without it)."""
+    try:
+        out = subprocess.run([shutil_which("node") or "node", "-v"], capture_output=True, text=True, timeout=10)
+        m = re.match(r"v?(\d+)", (out.stdout or "").strip())
+        return int(m.group(1)) if m else 0
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _run_step(cmd: list[str], cwd: Path, entry: AppProc, *, env: dict[str, str] | None = None,
@@ -450,6 +534,17 @@ def _supervise_node(entry: AppProc, app_dir: Path) -> None:
         env["PORT"] = str(port)
         env["HOST"] = "127.0.0.1"
         env["BROWSER"] = "none"
+        if entry.framework == "cra":
+            _ensure_cra_scaffold(app_dir, entry)  # generated CRA apps often lack public/index.html
+            # Create React App hardening: don't treat warnings as errors, skip the preflight/eslint
+            # gates, and (on Node >= 17) enable the legacy OpenSSL provider so react-scripts 4/5's
+            # webpack doesn't die with ERR_OSSL_EVP_UNSUPPORTED before it ever serves.
+            env["CI"] = "false"
+            env["SKIP_PREFLIGHT_CHECK"] = "true"
+            env["DISABLE_ESLINT_PLUGIN"] = "true"
+            env["TSC_COMPILE_ON_ERROR"] = "true"
+            if _node_major() >= 17:
+                env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + " --openssl-legacy-provider").strip()
         _log(entry, f"Starting ({entry.framework}): {' '.join(Path(c).name if i == 0 else c for i, c in enumerate(cmd))}")
         proc = subprocess.Popen(  # noqa: S603 - argv list, no shell, jailed cwd, minimal env
             cmd, cwd=str(app_dir), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
