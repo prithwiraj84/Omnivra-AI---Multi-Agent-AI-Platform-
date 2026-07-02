@@ -12,8 +12,11 @@ from app.db.client import supabase_configured
 from app.db.repositories import DashboardRepository
 from app.providers.registry import get_provider_registry
 from app.services.provider_keys import (
+    connector_field_keys,
+    is_known_connector,
     is_known_provider,
     provider_key_status,
+    social_connector_status,
 )
 from app.services.secrets_store import get_secrets_store
 
@@ -116,6 +119,70 @@ def clear_provider_key(
     _provider_or_404(provider_id)
     get_secrets_store().clear(provider_id)
     return _single_status(provider_id)
+
+
+# --- Social publishing connectors (multi-field: YouTube/LinkedIn/Facebook/Instagram/X) -------
+
+
+class SocialConnectorUpdate(BaseModel):
+    """Body for setting a connector's fields. A field mapped to "" (or omitted-then-null) is
+    cleared; any other value is stored. Unknown field keys are ignored."""
+
+    values: dict[str, str | None] = Field(default_factory=dict)
+
+
+def _connector_or_404(connector_id: str) -> None:
+    if not is_known_connector(connector_id):
+        raise HTTPException(status_code=404, detail=f"Unknown connector {connector_id!r}")
+
+
+def _single_connector(connector_id: str) -> dict[str, object]:
+    for row in social_connector_status():
+        if row["id"] == connector_id:
+            return row
+    raise HTTPException(status_code=404, detail=f"Unknown connector {connector_id!r}")
+
+
+@router.get("/social-connectors")
+def list_social_connectors(_user: str = Depends(require_user)) -> list[dict[str, object]]:
+    """Per-platform publishing-credential status (multi-field). No raw secrets are returned."""
+    return social_connector_status()
+
+
+@router.put("/social-connectors/{connector_id}")
+def set_social_connector(
+    connector_id: str,
+    body: SocialConnectorUpdate,
+    _user: str = Depends(require_user),
+) -> dict[str, object]:
+    """Set/clear a connector's credential fields (only keys belonging to this connector)."""
+    _connector_or_404(connector_id)
+    store = get_secrets_store()
+    allowed = set(connector_field_keys(connector_id))
+    for key, value in body.values.items():
+        if key not in allowed:
+            continue  # ignore stray keys — never let one connector write another's fields
+        if value is None or not value.strip():
+            store.clear(key)
+        else:
+            try:
+                store.set(key, value)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=f"{key}: {exc}") from exc
+    return _single_connector(connector_id)
+
+
+@router.delete("/social-connectors/{connector_id}")
+def clear_social_connector(
+    connector_id: str,
+    _user: str = Depends(require_user),
+) -> dict[str, object]:
+    """Remove ALL stored credentials for a connector (fields fall back to env, if any)."""
+    _connector_or_404(connector_id)
+    store = get_secrets_store()
+    for key in connector_field_keys(connector_id):
+        store.clear(key)
+    return _single_connector(connector_id)
 
 
 @router.get("/info")

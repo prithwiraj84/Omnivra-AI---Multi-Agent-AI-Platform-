@@ -46,10 +46,50 @@ authenticated with an OAuth2 **refresh token** (no interactive flow at runtime).
   per upload (retried with backoff on 429/5xx). Failures never crash a run — the publish
   result shows `ok=false` + a note, and you can retry just that platform.
 
-## Other platforms (stubbed)
-The Instagram / Facebook / LinkedIn / Twitter publishers are implemented as guarded
-stubs today. Each needs its own OAuth app + app review; Instagram additionally requires
-a Business/Creator account and a **publicly-hosted** video URL (it pulls the file rather
-than accepting an upload), so the rendered `.mp4` must be exposed via Supabase Storage /
-S3 first. These are wired one at a time in later phases, following the same real +
-stub-safe pattern as YouTube.
+## Configure credentials in the app (cp-0063)
+
+You no longer have to edit `backend/.env` — open **Integrations → Publishing & Social** and
+paste each platform's credentials into its card. Tokens are stored on the server
+(`workspace/.state/provider_keys.json`, gitignored), masked in the UI, and used on the next
+publish. A credential saved in-app **overrides** the matching `.env` value; clear it to fall back.
+
+API (behind the app's auth gate; responses are always masked):
+- `GET /api/system/social-connectors` — per-platform status + required fields.
+- `PUT /api/system/social-connectors/{id}` `{ "values": { "<field>": "<value>" } }` — save/replace
+  (a field set to `""` is cleared). Only fields belonging to that connector are accepted.
+- `DELETE /api/system/social-connectors/{id}` — disconnect (clear all its fields).
+
+### Credential fields per platform
+| Platform | Fields | Where to get them |
+|----------|--------|-------------------|
+| **YouTube** *(publishes now)* | Client ID, Client secret, Refresh token | Google Cloud Console → OAuth client → a refresh token with the `youtube.upload` scope |
+| **LinkedIn** | Access token | linkedin.com/developers → app with `w_member_social` → OAuth2 access token |
+| **Facebook Page** | Page ID, Page access token | developers.facebook.com → app + Page → Graph API Explorer → Page access token |
+| **Instagram** | IG Business account ID, Access token | Requires an IG **Business/Creator** account linked to a FB Page; long-lived Graph token |
+| **X (Twitter)** | API key, API secret, Access token, Access token secret | developer.twitter.com → app → **OAuth 1.0a** user keys (the read-only bearer token can't post) |
+
+## Real publishing status
+- **YouTube** *(reel)* — real resumable upload as PRIVATE; honors in-app tokens.
+- **LinkedIn** *(post)* — real UGC text share to your feed (PUBLIC). Resolves your author URN
+  from the token (needs the `openid` + `profile` scopes) then posts the caption/brief + hashtags.
+- **Facebook Page** *(post)* — real text post to the Page feed via the Graph API.
+- **X / Twitter** *(post)* — real tweet via API v2 with **OAuth 1.0a** signing (stdlib HMAC-SHA1;
+  the read-only bearer token can't post).
+- **Instagram** *(reel)* — real publish via the Graph API container flow: the rendered `.mp4` is
+  uploaded to **Supabase Storage** (a temporary signed URL), then `media` (REELS) → poll
+  `status_code` until FINISHED → `media_publish` → permalink. Requires an IG **Business/Creator**
+  account **and** Supabase Storage configured; with creds but no Storage it returns a clear note
+  (no network). Publishing waits up to ~60s for Instagram to transcode — if it's still processing,
+  approve → publish again to finish.
+
+Every real publisher is **guarded + stub-safe**: with no credentials it records a stub so the
+approve → publish flow still completes offline, and it **never raises** — a failure returns
+`ok=false` with a generic note (tokens are never echoed) and you can retry just that platform.
+Posts currently publish **text** (caption/brief + hashtags); image/video attachment for the
+post platforms is a follow-up.
+
+### Supabase Storage (needed for Instagram)
+Instagram fetches the reel from a URL, so set Storage up:
+1. Create a bucket (default name `omnivra-artifacts`, or set `SUPABASE_STORAGE_BUCKET`).
+2. Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (backend only). The reel is uploaded and
+   handed to Instagram as a **short-lived signed URL** — the bucket does **not** need to be public.

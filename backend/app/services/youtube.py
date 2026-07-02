@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import httpx
 
-from app.core.config import get_settings
 from app.core.logging import logger
 from app.providers.base import (
     FatalProviderError,
@@ -20,6 +19,7 @@ from app.providers.base import (
     with_provider_retry,
 )
 from app.schemas.social import PublishResult, SocialDraft
+from app.services.provider_keys import resolve_provider_key
 from app.workspace_fs.paths import project_root
 
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -29,21 +29,23 @@ _MAX_UPLOAD_BYTES = 1024 * 1024 * 1024  # 1 GB guard (reels are tiny; prevents a
 
 
 def is_configured() -> bool:
-    s = get_settings()
-    return bool(s.youtube_client_id and s.youtube_client_secret and s.youtube_refresh_token)
+    return bool(
+        resolve_provider_key("youtube_client_id")
+        and resolve_provider_key("youtube_client_secret")
+        and resolve_provider_key("youtube_refresh_token")
+    )
 
 
 @with_provider_retry(max_attempts=3)
 async def _access_token() -> str:
     """Exchange the refresh token for a short-lived access token."""
-    s = get_settings()
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.post(
             _TOKEN_URL,
             data={
-                "client_id": s.youtube_client_id,
-                "client_secret": s.youtube_client_secret,
-                "refresh_token": s.youtube_refresh_token,
+                "client_id": resolve_provider_key("youtube_client_id"),
+                "client_secret": resolve_provider_key("youtube_client_secret"),
+                "refresh_token": resolve_provider_key("youtube_refresh_token"),
                 "grant_type": "refresh_token",
             },
         )

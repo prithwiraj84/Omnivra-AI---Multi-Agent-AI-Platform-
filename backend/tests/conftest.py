@@ -27,9 +27,17 @@ for _k in (
     "GOOGLE_AI_STUDIO_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "HUGGINGFACE_API_KEY",
     # social pipeline (unset -> stub publish / no b-roll / no voiceover)
     "PEXELS_API_KEY", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN",
-    "INSTAGRAM_ACCESS_TOKEN", "FACEBOOK_PAGE_TOKEN", "LINKEDIN_ACCESS_TOKEN", "TWITTER_BEARER_TOKEN",
+    "INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_USER_ID", "FACEBOOK_PAGE_TOKEN", "FACEBOOK_PAGE_ID",
+    "LINKEDIN_ACCESS_TOKEN", "TWITTER_BEARER_TOKEN",
+    "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET",
 ):
     os.environ[_k] = ""
+
+# Force the documented auth defaults so a customized backend/.env (real ADMIN_USERNAME /
+# ADMIN_PASSWORD / AUTH_ENABLED) can't break the hermetic auth tests — os.environ overrides .env.
+os.environ["AUTH_ENABLED"] = "false"
+os.environ["ADMIN_USERNAME"] = "admin"
+os.environ["ADMIN_PASSWORD"] = "omnivra"
 
 # Force STUB reel rendering in tests so the suite is fast + deterministic even when
 # the optional MoviePy engine is installed locally (a real encode takes ~tens of sec).

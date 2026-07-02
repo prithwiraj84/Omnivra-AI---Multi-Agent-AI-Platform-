@@ -15,24 +15,29 @@ from app.providers.base import BaseProvider, CompletionRequest, CompletionRespon
 from app.providers.registry import get_provider_registry
 from app.services.provider_keys import (
     PROVIDER_KEY_CATALOG,
+    SOCIAL_CONNECTORS,
+    connector_configured,
     is_known_provider,
     key_source,
     mask_key,
     provider_key_status,
     resolve_provider_key,
+    social_connector_status,
 )
 from app.services.secrets_store import get_secrets_store
+
+_ALL_KEYS = [s.id for s in PROVIDER_KEY_CATALOG] + [f.key for c in SOCIAL_CONNECTORS for f in c.fields]
 
 
 @pytest.fixture(autouse=True)
 def _clean_store():
-    """Clear every catalog key before and after each test (shared singleton store)."""
+    """Clear every catalog + connector-field key before and after each test (shared singleton)."""
     store = get_secrets_store()
-    for spec in PROVIDER_KEY_CATALOG:
-        store.clear(spec.id)
+    for k in _ALL_KEYS:
+        store.clear(k)
     yield
-    for spec in PROVIDER_KEY_CATALOG:
-        store.clear(spec.id)
+    for k in _ALL_KEYS:
+        store.clear(k)
 
 
 # --- masking ---------------------------------------------------------------
@@ -206,3 +211,94 @@ def test_acall_survives_concurrent_pool_shrink():
 
     assert asyncio.run(provider._acall(run)) == "ok"
     assert len(seen) == 2  # rotated to the 2nd key of the ORIGINAL 3-key snapshot, no IndexError
+
+
+# --- social publishing connectors (cp-0063 Phase A) ----------------------------------------
+def test_social_connector_status_shape_no_raw_secrets():
+    rows = {r["id"]: r for r in social_connector_status()}
+    assert {"youtube", "linkedin", "facebook", "instagram", "twitter"} <= set(rows)
+    # nothing configured out of the box (conftest neutralizes env)
+    assert rows["twitter"]["configured"] is False
+    assert rows["twitter"]["publishSupported"] is True
+    assert rows["youtube"]["publishSupported"] is True
+    assert rows["instagram"]["publishSupported"] is True
+    # X (Twitter) exposes the OAuth1 quad, all secret + required
+    tw_fields = {f["key"] for f in rows["twitter"]["fields"]}
+    assert tw_fields == {"twitter_api_key", "twitter_api_secret", "twitter_access_token", "twitter_access_secret"}
+    for f in rows["twitter"]["fields"]:
+        assert f["masked"] is None and f["storedSet"] is False
+
+
+def test_connector_configured_requires_all_required_fields():
+    store = get_secrets_store()
+    assert connector_configured("linkedin") is False
+    store.set("linkedin_access_token", "li-token-abcdef")
+    assert connector_configured("linkedin") is True
+
+    # twitter needs all four; one missing -> not configured
+    assert connector_configured("twitter") is False
+    store.set("twitter_api_key", "ak")
+    store.set("twitter_api_secret", "as")
+    store.set("twitter_access_token", "at")
+    assert connector_configured("twitter") is False
+    store.set("twitter_access_secret", "asec")
+    assert connector_configured("twitter") is True
+
+
+def test_social_field_resolver_precedence(monkeypatch):
+    # env fallback for a social field
+    assert resolve_provider_key("facebook_page_token") is None
+    monkeypatch.setattr(get_settings(), "facebook_page_token", "env-fb-tok", raising=False)
+    assert resolve_provider_key("facebook_page_token") == "env-fb-tok"
+    # stored overrides env
+    get_secrets_store().set("facebook_page_token", "stored-fb-tok")
+    assert resolve_provider_key("facebook_page_token") == "stored-fb-tok"
+
+
+def test_publishers_is_configured_reflects_stored_creds():
+    from app.services import publishers
+
+    assert publishers.is_configured("facebook") is False
+    get_secrets_store().set("facebook_page_id", "123")
+    get_secrets_store().set("facebook_page_token", "fb-token")
+    assert publishers.is_configured("facebook") is True
+
+
+def test_social_connector_endpoints(client):
+    # GET
+    resp = client.get("/api/system/social-connectors")
+    assert resp.status_code == 200
+    ids = {c["id"] for c in resp.json()}
+    assert {"youtube", "linkedin", "facebook", "instagram", "twitter"} <= ids
+
+    # PUT multiple fields at once
+    resp = client.put(
+        "/api/system/social-connectors/facebook",
+        json={"values": {"facebook_page_id": "998877", "facebook_page_token": "EAAG-secret-token"}},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is True
+    fields = {f["key"]: f for f in body["fields"]}
+    assert fields["facebook_page_token"]["masked"] == "EAAG…oken"
+    assert "EAAG-secret-token" not in resp.text  # masked only
+
+    # stray field key for another connector is ignored
+    resp = client.put("/api/system/social-connectors/linkedin", json={"values": {"facebook_page_id": "x", "linkedin_access_token": "li-tok"}})
+    assert resp.status_code == 200
+    assert resp.json()["configured"] is True
+    # the facebook field was NOT overwritten by the linkedin PUT
+    fb = next(c for c in client.get("/api/system/social-connectors").json() if c["id"] == "facebook")
+    assert {f["key"]: f["masked"] for f in fb["fields"]}["facebook_page_id"] is not None
+
+    # clearing a required field (empty value) drops "configured"
+    resp = client.put("/api/system/social-connectors/facebook", json={"values": {"facebook_page_token": ""}})
+    assert resp.json()["configured"] is False
+
+    # DELETE clears the whole connector
+    resp = client.delete("/api/system/social-connectors/linkedin")
+    assert resp.status_code == 200
+    assert resp.json()["configured"] is False
+
+    assert client.put("/api/system/social-connectors/bogus", json={"values": {}}).status_code == 404
+    assert client.delete("/api/system/social-connectors/bogus").status_code == 404

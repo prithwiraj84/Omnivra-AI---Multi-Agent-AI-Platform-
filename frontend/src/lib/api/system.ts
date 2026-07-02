@@ -79,6 +79,56 @@ export async function clearProviderKey(id: string): Promise<ProviderKeyStatus> {
   return data
 }
 
+/** One credential field within a social publishing connector. Never carries a raw value. */
+export interface SocialConnectorField {
+  key: string
+  label: string
+  envVar: string
+  secret: boolean
+  required: boolean
+  placeholder: string
+  envSet: boolean
+  storedSet: boolean
+  source: 'stored' | 'env' | 'none'
+  masked: string | null
+}
+
+/** A social publishing platform's connection status (multi-field). GET /system/social-connectors. */
+export interface SocialConnector {
+  id: string
+  label: string
+  docUrl: string
+  /** Whether the REAL publish path is wired for this platform yet (else config-only). */
+  publishSupported: boolean
+  /** A caveat to surface (e.g. Instagram's public-URL requirement); may be empty. */
+  note: string
+  kinds: string[]
+  /** True when every required field is present (stored or env). */
+  configured: boolean
+  fields: SocialConnectorField[]
+}
+
+/** Per-platform publishing-credential status. GET /system/social-connectors. */
+export async function listSocialConnectors(): Promise<SocialConnector[]> {
+  const { data } = await api.get<SocialConnector[]>('/system/social-connectors')
+  return data
+}
+
+/** Set/clear a connector's fields (a value of '' clears that field). PUT /system/social-connectors/{id}. */
+export async function setSocialConnector(
+  id: string,
+  values: Record<string, string>,
+): Promise<SocialConnector> {
+  const { data } = await api.put<SocialConnector>(`/system/social-connectors/${id}`, { values })
+  return data
+}
+
+/** Remove every stored credential for a connector. DELETE /system/social-connectors/{id}. */
+export async function clearSocialConnector(id: string): Promise<SocialConnector> {
+  const { data } = await api.delete<SocialConnector>(`/system/social-connectors/${id}`)
+  return data
+}
+
 /**
  * Checkpoint — one node in the cp-NNNN checkpoint lineage (GET /system/checkpoints).
  * `phase` is the build phase number (null for non-phase checkpoints); `phaseTitle`

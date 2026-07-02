@@ -68,10 +68,21 @@ class Settings(BaseSettings):
     youtube_client_id: str | None = None
     youtube_client_secret: str | None = None
     youtube_refresh_token: str | None = None
-    instagram_access_token: str | None = None  # Instagram Graph API (reels)
-    facebook_page_token: str | None = None  # Facebook Page (posts)
-    linkedin_access_token: str | None = None  # LinkedIn (posts)
-    twitter_bearer_token: str | None = None  # Twitter / X (posts)
+    # Instagram Graph API (reels): a long-lived token + the IG Business account id. Publishing
+    # is a 2-step container flow and requires a PUBLICLY reachable video URL (see publishers).
+    instagram_access_token: str | None = None
+    instagram_user_id: str | None = None
+    # Facebook Page (posts): a Page access token + the numeric Page id.
+    facebook_page_token: str | None = None
+    facebook_page_id: str | None = None
+    linkedin_access_token: str | None = None  # LinkedIn (posts) — OAuth2 w_member_social
+    # Twitter / X. The bearer token is READ-ONLY; posting needs OAuth 1.0a user context
+    # (consumer key/secret + access token/secret).
+    twitter_bearer_token: str | None = None
+    twitter_api_key: str | None = None
+    twitter_api_secret: str | None = None
+    twitter_access_token: str | None = None
+    twitter_access_secret: str | None = None
 
     # --- Supabase ---
     supabase_url: str | None = None

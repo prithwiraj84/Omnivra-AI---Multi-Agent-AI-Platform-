@@ -8,25 +8,24 @@ status dots). Publishing is invoked only after human approval.
 """
 from __future__ import annotations
 
-from app.core.config import get_settings
 from app.schemas.social import PublishResult, SocialDraft
-from app.services import youtube
+from app.services import facebook, instagram, linkedin, twitter, youtube
+from app.services.provider_keys import connector_configured
 
-# platform -> (display label, settings attr holding its credential, content kind it serves)
-PLATFORMS: dict[str, tuple[str, str, str]] = {
-    "youtube": ("YouTube", "youtube_refresh_token", "reel"),
-    "instagram": ("Instagram", "instagram_access_token", "reel"),
-    "facebook": ("Facebook", "facebook_page_token", "post"),
-    "linkedin": ("LinkedIn", "linkedin_access_token", "post"),
-    "twitter": ("Twitter / X", "twitter_bearer_token", "post"),
+# platform -> (display label, content kind it serves). Credential status is resolved via the
+# social-connector catalog (services/provider_keys) so in-app tokens are honored too.
+PLATFORMS: dict[str, tuple[str, str]] = {
+    "youtube": ("YouTube", "reel"),
+    "instagram": ("Instagram", "reel"),
+    "facebook": ("Facebook", "post"),
+    "linkedin": ("LinkedIn", "post"),
+    "twitter": ("Twitter / X", "post"),
 }
 
 
 def is_configured(platform: str) -> bool:
-    if platform == "youtube":
-        return youtube.is_configured()
-    spec = PLATFORMS.get(platform)
-    return bool(getattr(get_settings(), spec[1], None)) if spec else False
+    """True when the platform's credentials are present (stored in-app OR in env)."""
+    return connector_configured(platform)
 
 
 def status() -> dict[str, bool]:
@@ -34,19 +33,18 @@ def status() -> dict[str, bool]:
     return {p: is_configured(p) for p in PLATFORMS}
 
 
-async def publish_to(platform: str, draft: SocialDraft) -> PublishResult:
-    """Publish a draft to one platform. YouTube is a real upload; the rest stub for now."""
-    if platform == "youtube":
-        return await youtube.upload(draft)
+_PUBLISHERS = {
+    "youtube": youtube.upload,
+    "linkedin": linkedin.publish,
+    "facebook": facebook.publish,
+    "twitter": twitter.publish,
+    "instagram": instagram.publish,
+}
 
-    spec = PLATFORMS.get(platform)
-    if not spec:
+
+async def publish_to(platform: str, draft: SocialDraft) -> PublishResult:
+    """Publish a draft to one platform. All five have real, guarded + stub-safe publishers."""
+    publisher = _PUBLISHERS.get(platform)
+    if publisher is None:
         return PublishResult(platform=platform, ok=False, stub=True, note=f"Unknown platform {platform!r}.")
-    label, attr, _kind = spec
-    configured = bool(getattr(get_settings(), attr, None))
-    note = (
-        f"{label} credential present; real upload is wired in a later phase (recorded as a stub)."
-        if configured
-        else f"Set {attr.upper()} to publish to {label} for real; recorded as a stub."
-    )
-    return PublishResult(platform=platform, ok=True, url=f"https://{platform}.local/stub/{draft.id}", stub=True, note=note)
+    return await publisher(draft)

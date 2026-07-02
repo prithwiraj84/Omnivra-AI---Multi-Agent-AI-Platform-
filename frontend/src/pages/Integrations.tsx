@@ -1,14 +1,16 @@
 import type { LucideIcon } from 'lucide-react'
-import { Clapperboard, Cpu, Database, KeyRound, Plug, ShieldCheck, Sparkles, Zap } from 'lucide-react'
+import { Clapperboard, Cpu, Database, Facebook, Instagram, KeyRound, Linkedin, Plug, Send, ShieldCheck, Sparkles, Youtube, Zap } from 'lucide-react'
 
 import { ProviderKeyCard, type ProviderKeyMeta } from '@/components/integrations/provider-key-card'
+import { SocialConnectorCard, type SocialConnectorMeta } from '@/components/integrations/social-connector-card'
+import { FacebookMark, InstagramMark, LinkedInMark, XMark, YouTubeMark } from '@/components/landing/brand-marks'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { NeonBadge, type BadgeTone } from '@/components/ui/neon-badge'
 import { StatusDot } from '@/components/ui/status-dot'
 import { IconTile } from '@/components/ui/icon-tile'
 import { Reveal, Stagger, StaggerItem } from '@/components/common/reveal'
-import { useProviderKeys, useSystemInfo } from '@/hooks/useSystem'
+import { useProviderKeys, useSocialConnectors, useSystemInfo } from '@/hooks/useSystem'
 import type { Accent } from '@/types'
 
 /** A status tile descriptor for the read-only platform-service cards. */
@@ -102,6 +104,15 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
   },
 ]
 
+/** Per-connector display metadata (brand mark + header icon + accent), keyed by connector id. */
+const SOCIAL_META: Record<string, { meta: SocialConnectorMeta; icon: LucideIcon }> = {
+  youtube: { meta: { id: 'youtube', mark: <YouTubeMark className="h-5 w-5" />, accent: 'pink' }, icon: Youtube },
+  linkedin: { meta: { id: 'linkedin', mark: <LinkedInMark className="h-5 w-5" />, accent: 'blue' }, icon: Linkedin },
+  facebook: { meta: { id: 'facebook', mark: <FacebookMark className="h-5 w-5" />, accent: 'blue' }, icon: Facebook },
+  instagram: { meta: { id: 'instagram', mark: <InstagramMark className="h-5 w-5" />, accent: 'pink' }, icon: Instagram },
+  twitter: { meta: { id: 'twitter', mark: <XMark className="h-5 w-5 text-white" />, accent: 'violet' }, icon: Send },
+}
+
 /** One read-only integration card: tile + name, a presence dot and a Configured badge. */
 function StatusCard({ tile }: { tile: StatusTile }) {
   const Icon = tile.icon
@@ -138,6 +149,7 @@ function StatusCard({ tile }: { tile: StatusTile }) {
 export function Integrations() {
   const { data: keys } = useProviderKeys()
   const { data: info } = useSystemInfo()
+  const { data: connectors } = useSocialConnectors()
 
   const byId = new Map((keys ?? []).map((k) => [k.id, k]))
   const llm = KEY_PROVIDERS.filter((p) => p.category === 'llm')
@@ -204,6 +216,28 @@ export function Integrations() {
           ))}
         </Stagger>
       </section>
+
+      {connectors && connectors.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <SectionHeader label="Publishing & Social" count={connectors.length} />
+          <p className="-mt-1 max-w-prose text-xs leading-relaxed text-[#a1a1aa]">
+            Add each platform’s API credentials to publish reels and posts. Tokens are stored on the server,
+            masked here, and never committed. YouTube uploads for real today; the others save now and go live
+            as each platform’s publishing is wired in.
+          </p>
+          <Stagger className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {connectors.map((c) => {
+              const m = SOCIAL_META[c.id]
+              if (!m) return null
+              return (
+                <StaggerItem key={c.id}>
+                  <SocialConnectorCard connector={c} meta={m.meta} icon={m.icon} />
+                </StaggerItem>
+              )
+            })}
+          </Stagger>
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <SectionHeader label="Platform Services" count={platformTiles.length} />
