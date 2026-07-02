@@ -20,7 +20,9 @@ export function LandingNav() {
   const { scrollY } = useScroll()
   const [scrolled, setScrolled] = useState(false)
   useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 24))
-  const { isAuthenticated } = useSupabaseAuth()
+  const { isAuthenticated, isConfigured } = useSupabaseAuth()
+  // The app now requires login when Supabase is configured — send un-authed visitors to sign in.
+  const appHref = !isConfigured || isAuthenticated ? '/dashboard' : '/login'
 
   return (
     <motion.header
@@ -64,7 +66,7 @@ export function LandingNav() {
             </Link>
           )}
           <Link
-            to="/dashboard"
+            to={appHref}
             className="focus-ring group inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-omnivra-bg-root transition-transform duration-200 hover:scale-[1.03] active:scale-95"
           >
             {isAuthenticated ? 'Open app' : 'Launch app'}

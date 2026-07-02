@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
+    # Set this (Supabase → Settings → API → JWT Secret) to turn on PER-USER isolation: the backend
+    # verifies each request's Supabase access token and scopes projects/dashboard/tasks to that user.
+    # Unset → single-admin open mode (everything owned by ADMIN_USERNAME), exactly as before.
+    supabase_jwt_secret: str | None = None
     supabase_db_password: str | None = None
     supabase_db_url: str | None = None
     supabase_storage_bucket: str = "omnivra-artifacts"

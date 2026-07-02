@@ -23,6 +23,8 @@ os.environ.setdefault("APP_ENV", "test")
 for _k in (
     # data / cache
     "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL", "SUPABASE_DB_PASSWORD",
+    # per-user isolation OFF by default -> single-admin open mode (current_user == admin)
+    "SUPABASE_JWT_SECRET",
     # LLM / media providers (unset -> deterministic stub responses)
     "GOOGLE_AI_STUDIO_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "HUGGINGFACE_API_KEY",
     # social pipeline (unset -> stub publish / no b-roll / no voiceover)

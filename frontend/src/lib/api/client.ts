@@ -3,6 +3,7 @@
  *  - Prod (Vercel -> a remote backend like a HF Space): set VITE_API_BASE_URL to the backend's
  *    absolute /api base (e.g. https://<user>-<space>.hf.space/api) so cross-origin calls resolve. */
 import axios from 'axios'
+import { supabase } from '@/lib/supabase'
 import { TOKEN_STORAGE_KEY } from '@/store/auth'
 import { getActiveProjectId } from '@/store/project'
 
@@ -25,19 +26,30 @@ export const api = axios.create({
 })
 
 /**
- * Attach the bearer token (when present) to every request. We read it straight from
- * localStorage rather than the store so this stays a plain module with no React/store
- * coupling — the auth store keeps the same key in sync. Harmless in open mode (no token).
+ * Attach the auth token to every request. Prefer the **Supabase access token** (the backend
+ * verifies it to identify the user for per-user private workspaces), auto-refreshed by
+ * supabase-js; fall back to the legacy backend token in localStorage for open/self-host mode.
+ * Async so we can read the freshest Supabase session. Harmless in open mode (no token).
  */
-api.interceptors.request.use((config) => {
-  let token: string | null = null
-  try {
-    token = localStorage.getItem(TOKEN_STORAGE_KEY)
-  } catch {
-    token = null
+api.interceptors.request.use(async (config) => {
+  let bearer: string | null = null
+  if (supabase) {
+    try {
+      const { data } = await supabase.auth.getSession()
+      bearer = data.session?.access_token ?? null
+    } catch {
+      bearer = null
+    }
   }
-  if (token) {
-    config.headers.set('Authorization', `Bearer ${token}`)
+  if (!bearer) {
+    try {
+      bearer = localStorage.getItem(TOKEN_STORAGE_KEY)
+    } catch {
+      bearer = null
+    }
+  }
+  if (bearer) {
+    config.headers.set('Authorization', `Bearer ${bearer}`)
   }
   // Scope every request to the active project (backend stores are partitioned by it).
   config.headers.set('X-Project-Id', getActiveProjectId())

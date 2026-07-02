@@ -65,10 +65,19 @@ def _ago(iso: str) -> str:
     return f"{int(secs // 86400)}d ago"
 
 
-def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
-    """Return ``base`` with ALL operational fields replaced by live values."""
+def build_live_dashboard(base: DashboardPayload, *, owner_id: str | None = None) -> DashboardPayload:
+    """Return ``base`` with ALL operational fields replaced by live values.
+
+    When ``owner_id`` is given, everything is scoped to that user's projects (per-user
+    isolation) — so one user's dashboard never surfaces another user's runs/activity/tasks.
+    """
     try:
         pids = list_project_dir_ids()
+        if owner_id is not None:
+            from app.services.project_store import get_project_store
+
+            owned = {p["id"] for p in get_project_store().list_projects(owner_id=owner_id)}
+            pids = [p for p in pids if p in owned]
     except Exception:  # noqa: BLE001
         return base
 
@@ -139,8 +148,8 @@ def build_live_dashboard(base: DashboardPayload) -> DashboardPayload:
         from app.services.project_store import get_project_store
 
         ps = get_project_store()
-        projects = ps.list_projects()
-        tasks = ps.list_tasks()
+        projects = ps.list_projects(owner_id=owner_id)
+        tasks = ps.list_tasks(owner_id=owner_id)
     except Exception:  # noqa: BLE001
         projects, tasks = [], []
 

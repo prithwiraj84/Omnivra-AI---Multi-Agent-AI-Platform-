@@ -1,12 +1,13 @@
 """FastAPI dependencies for the REST API.
 
 ``get_repo`` resolves the process-wide dashboard repository (Supabase when configured,
-else seed). ``require_user`` is the auth gate: a no-op returning the admin user when
-``auth_enabled`` is False (dev/open mode), and a Bearer-token check when enabled.
+else seed). ``current_user`` is the identity that OWNS a request's data (per-user isolation);
+``require_user`` is the older auth gate kept for endpoints that only need "is authenticated".
 """
 from __future__ import annotations
 
-from fastapi import Header, HTTPException, Query
+import jwt
+from fastapi import Depends, Header, HTTPException, Query
 
 from app.core.config import get_settings
 from app.core.security import verify_token
@@ -20,21 +21,58 @@ def get_repo() -> DashboardRepository:
     return get_repository()
 
 
+def _bearer(authorization: str | None) -> str | None:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization.split(" ", 1)[1].strip()
+    return None
+
+
+def current_user(authorization: str | None = Header(default=None)) -> str:
+    """The identity that owns this request's projects/workspace.
+
+    - PER-USER mode (SUPABASE_JWT_SECRET set): verify the request's Supabase access token
+      (HS256, aud=authenticated) and return its user id (`sub`). No/invalid token -> 401.
+    - Single-admin/open mode (secret unset): always the admin username, so every existing
+      test + local run behaves exactly as before (one owner, no auth required).
+    """
+    settings = get_settings()
+    secret = settings.supabase_jwt_secret
+    if not secret:
+        return settings.admin_username
+    token = _bearer(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
+    except Exception as exc:  # noqa: BLE001 - any JWT error is an auth failure
+        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid session (no subject)")
+    return str(sub)
+
+
 def get_project_id(
+    current: str = Depends(current_user),
     x_project_id: str | None = Header(default=None),
     projectId: str | None = Query(default=None),
 ) -> str:
-    """Resolve the active project for a request: X-Project-Id header or ?projectId= query.
+    """Resolve the active project for a request, SCOPED TO THE CURRENT USER.
 
-    Defaults to the Default Workspace, rejects ids that could escape the projects/
-    directory (per-project path jail) with a 400, and rejects unknown/deleted projects
-    with a 404 — so a stale or crafted id can never silently recreate a purged subtree.
+    An empty id — or the legacy shared "default" — maps to *this user's* Default Workspace
+    (created on first use). Any other id must be owned by the current user, else 404 (we return
+    404 rather than 403 so a crafted/foreign id never reveals another user's project existence).
+    Ids that could escape the projects/ path jail are rejected with 400.
     """
+    raw = x_project_id or projectId
+    store = get_project_store()
+    if not raw or raw == DEFAULT_PROJECT:
+        return store.ensure_user_default(current)
     try:
-        pid = safe_project_id(x_project_id or projectId)
+        pid = safe_project_id(raw)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if pid != DEFAULT_PROJECT and get_project_store().get_project(pid) is None:
+    if store.get_project(pid, owner_id=current) is None:
         raise HTTPException(status_code=404, detail=f"No project {pid!r}")
     return pid
 
@@ -44,9 +82,10 @@ def require_user(authorization: str | None = Header(default=None)) -> str:
     settings = get_settings()
     if not settings.auth_enabled:
         return settings.admin_username
-    if not authorization or not authorization.lower().startswith("bearer "):
+    token = _bearer(authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    user = verify_token(authorization.split(" ", 1)[1].strip())
+    user = verify_token(token)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return user

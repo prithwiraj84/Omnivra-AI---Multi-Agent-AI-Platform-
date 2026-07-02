@@ -239,9 +239,13 @@ const ACCENT_GLOW: Record<string, string> = {
 export function Landing() {
   const reduce = useReducedMotion() ?? false
   const navigate = useNavigate()
-  const { isConfigured, signInWithProvider } = useSupabaseAuth()
+  const { isConfigured, isAuthenticated, signInWithProvider } = useSupabaseAuth()
   const [oauthPending, setOauthPending] = useState<OAuthProvider | null>(null)
   const [oauthError, setOauthError] = useState<string | null>(null)
+
+  // Where "Launch the command center" goes: straight to the app when it's reachable (open mode,
+  // or already signed in), otherwise to sign-in first (the app now requires login).
+  const appHref = !isConfigured || isAuthenticated ? '/dashboard' : '/login'
 
   // CTA "Continue with …": start OAuth directly when Supabase is set up, else route to the
   // sign-in page (which also carries the credentials fallback). Shows a pending state during
@@ -382,7 +386,7 @@ export function Landing() {
               className="mt-9 flex flex-col items-center gap-3 sm:flex-row"
             >
               <Link
-                to="/dashboard"
+                to={appHref}
                 className="focus-ring group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-omnivra-cyan to-omnivra-blue px-6 py-3 text-sm font-semibold text-omnivra-bg-root shadow-neon-cyan transition-transform duration-200 hover:scale-[1.03] active:scale-95"
               >
                 Launch the command center
@@ -649,7 +653,7 @@ export function Landing() {
               </p>
             )}
             <Link
-              to="/dashboard"
+              to={appHref}
               className="focus-ring group mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-omnivra-cyan hover:text-white"
             >
               or launch the command center

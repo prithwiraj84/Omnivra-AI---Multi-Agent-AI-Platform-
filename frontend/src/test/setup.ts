@@ -3,6 +3,13 @@
  * Radix UI (Tooltip/DropdownMenu/ScrollArea) and Recharts (ResponsiveContainer) expect
  * browser APIs that jsdom does not implement. Stub the minimum needed to mount components.
  */
+import { vi } from 'vitest'
+
+// Keep the suite hermetic + in OPEN mode: force Supabase OFF so the AuthGate (which now REQUIRES
+// login whenever Supabase is configured) stays a no-op and the app renders in tests, regardless
+// of a real VITE_SUPABASE_URL in .env.local. Must run before any module reads import.meta.env.
+vi.stubEnv('VITE_SUPABASE_URL', '')
+vi.stubEnv('VITE_SUPABASE_ANON_KEY', '')
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>

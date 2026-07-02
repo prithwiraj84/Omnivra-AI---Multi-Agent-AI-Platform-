@@ -12,10 +12,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from app import schemas
-from app.api.deps import get_repo, require_user
+from app.api.deps import current_user, get_repo
 from app.db.repositories import DashboardRepository
 from app.schemas import RunResult
 from app.services.orchestrator import resume_workflow
+from app.services.project_store import get_project_store
 from app.services.workflow_store import find_by_approval, get_workflow_store
 
 router = APIRouter(tags=["approvals"])
@@ -39,19 +40,22 @@ def submit_decision(
     approval_id: str,
     decision: ApprovalDecision,
     background_tasks: BackgroundTasks,
-    _user: str = Depends(require_user),
+    current: str = Depends(current_user),
 ) -> RunResult:
     """Resume the workflow gated by ``approval_id`` with the human decision; returns IMMEDIATELY.
 
     Resuming re-enters the LangGraph run (approve/retry continue to completion — many seconds,
     past the UI timeout), so we mark the run 'running' and resume in a BackgroundTask. The client
     polls the awaiting/runs sets (and watches /ws) for the terminal state. The pending run is
-    located across all projects (the approval id alone doesn't name a project).
+    located across all projects (the approval id alone doesn't name a project), then checked to
+    belong to the current user so no one can decide on another user's workflow.
     """
     located = find_by_approval(approval_id)
     if located is None:
         raise HTTPException(status_code=404, detail=f"No pending workflow for approval {approval_id!r}")
     project_id, run = located
+    if not get_project_store().owns(project_id, current):
+        raise HTTPException(status_code=404, detail=f"No pending workflow for approval {approval_id!r}")
     # Idempotency guard: find_by_approval matches on pending_approval.approval_id (no status filter),
     # so a double-click / second tab could re-locate a run we already flipped. Only an actually-awaiting
     # run may be decided; otherwise return 409 rather than scheduling a duplicate resume on the same

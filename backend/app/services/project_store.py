@@ -82,56 +82,114 @@ class ProjectStore:
     def _save_tasks(self) -> None:
         self._tasks_path.write_text(__import__("json").dumps(self._tasks, indent=2), encoding="utf-8")
 
+    # --- Ownership (per-user isolation) ---
+    @staticmethod
+    def _admin_id() -> str:
+        return get_settings().admin_username
+
+    def _owner_of(self, proj: dict[str, Any]) -> str:
+        """A project's owner. Legacy projects (no owner_id) belong to the admin, so in open
+        mode the admin sees everything and in per-user mode they're hidden from real users."""
+        return proj.get("owner_id") or self._admin_id()
+
+    def owns(self, project_id: str, owner_id: str) -> bool:
+        proj = next((p for p in self._projects if p["id"] == project_id), None)
+        return proj is not None and self._owner_of(proj) == owner_id
+
     # --- Projects ---
-    def list_projects(self) -> list[dict[str, Any]]:
+    def list_projects(self, *, owner_id: str | None = None) -> list[dict[str, Any]]:
+        """All projects (owner_id=None) or only those owned by `owner_id`, with task counts."""
         out = []
         for p in self._projects:
+            if owner_id is not None and self._owner_of(p) != owner_id:
+                continue
             out.append({**p, "task_count": sum(1 for t in self._tasks if t.get("project_id") == p["id"])})
         return out
 
-    def get_project(self, project_id: str) -> dict[str, Any] | None:
-        for p in self.list_projects():
+    def get_project(self, project_id: str, *, owner_id: str | None = None) -> dict[str, Any] | None:
+        for p in self._projects:
             if p["id"] == project_id:
-                return p
+                if owner_id is not None and self._owner_of(p) != owner_id:
+                    return None
+                return {**p, "task_count": sum(1 for t in self._tasks if t.get("project_id") == p["id"])}
         return None
 
-    def create_project(self, name: str, description: str = "") -> dict[str, Any]:
-        proj = {"id": "proj-" + uuid4().hex[:8], "name": name, "description": description, "status": "active", "created_at": _now()}
+    def create_project(self, name: str, description: str = "", *, owner_id: str | None = None) -> dict[str, Any]:
+        proj: dict[str, Any] = {"id": "proj-" + uuid4().hex[:8], "name": name, "description": description, "status": "active", "created_at": _now()}
+        if owner_id is not None:
+            proj["owner_id"] = owner_id
         with self._lock:
             self._projects.append(proj)
             self._save_projects()
         return {**proj, "task_count": 0}
 
-    def delete_project(self, project_id: str) -> bool:
+    def ensure_user_default(self, owner_id: str) -> str:
+        """The id of `owner_id`'s Default Workspace, creating it on first use.
+
+        The admin's default is the legacy shared DEFAULT_PROJECT (so open mode is unchanged);
+        every other user gets their own private default bucket."""
+        if owner_id == self._admin_id():
+            return DEFAULT_PROJECT
+        with self._lock:
+            for p in self._projects:
+                if p.get("owner_id") == owner_id and p.get("is_default"):
+                    return str(p["id"])
+            pid = "default-" + uuid4().hex[:8]
+            self._projects.append({
+                "id": pid, "name": "Default Workspace", "description": "Your unfiled workflow runs.",
+                "status": "active", "created_at": _now(), "owner_id": owner_id, "is_default": True,
+            })
+            self._save_projects()
+            return pid
+
+    def delete_project(self, project_id: str, *, owner_id: str | None = None) -> bool:
         """Remove a project from the catalog AND hard-delete its workspace subtree.
 
-        The Default Workspace is never deletable. The filesystem cascade (artifacts,
-        RAG memory, run records, checkpoints) runs after the catalog write so a purge
-        failure can't leave a half-deleted catalog.
+        The Default Workspace is never deletable, and a non-owner can't delete another user's
+        project. The filesystem cascade runs after the catalog write so a purge failure can't
+        leave a half-deleted catalog.
         """
         if project_id == DEFAULT_PROJECT:
             return False
         with self._lock:
-            before = len(self._projects)
+            proj = next((p for p in self._projects if p["id"] == project_id), None)
+            if proj is None:
+                return False
+            if proj.get("is_default"):
+                return False  # a user's own Default Workspace isn't deletable either
+            if owner_id is not None and self._owner_of(proj) != owner_id:
+                return False
             self._projects = [p for p in self._projects if p["id"] != project_id]
             self._tasks = [t for t in self._tasks if t.get("project_id") != project_id]
-            removed = len(self._projects) != before
-            if removed:
-                self._save_projects()
-                self._save_tasks()
-        if removed:
-            try:  # cascade: wipe the project's entire workspace subtree + evict caches
-                purge_project_workspace(project_id)
-            except Exception as exc:  # noqa: BLE001 - never let FS cleanup break the catalog delete
-                logger.warning("Workspace purge failed for project {}: {}", project_id, exc)
-        return removed
+            self._save_projects()
+            self._save_tasks()
+        try:  # cascade: wipe the project's entire workspace subtree + evict caches
+            purge_project_workspace(project_id)
+        except Exception as exc:  # noqa: BLE001 - never let FS cleanup break the catalog delete
+            logger.warning("Workspace purge failed for project {}: {}", project_id, exc)
+        return True
 
     # --- Tasks ---
-    def list_tasks(self, *, project_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+    def list_tasks(
+        self, *, project_id: str | None = None, status: str | None = None, owner_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        owned: set[str] | None = None
+        if owner_id is not None:
+            owned = {p["id"] for p in self.list_projects(owner_id=owner_id)}
         return [
             t for t in self._tasks
-            if (project_id is None or t.get("project_id") == project_id) and (status is None or t.get("status") == status)
+            if (project_id is None or t.get("project_id") == project_id)
+            and (status is None or t.get("status") == status)
+            and (owned is None or t.get("project_id") in owned)
         ]
+
+    def task_owned_by(self, task_id: str, owner_id: str) -> bool:
+        """True when `task_id` exists and belongs to a project `owner_id` owns."""
+        task = self.get_task(task_id)
+        if task is None:
+            return False
+        pid = task.get("project_id")
+        return pid is not None and self.owns(pid, owner_id)
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         return next((t for t in self._tasks if t["id"] == task_id), None)
