@@ -11,8 +11,9 @@ import { cn } from '@/lib/utils'
 
 const LINKS = [
   { label: 'Features', href: '#features' },
+  { label: 'Agents', href: '#agents' },
   { label: 'How it works', href: '#how' },
-  { label: 'Departments', href: '#departments' },
+  { label: 'Integrations', href: '#stack' },
 ]
 
 export function LandingNav() {
