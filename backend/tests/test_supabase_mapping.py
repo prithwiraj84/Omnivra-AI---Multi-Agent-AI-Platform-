@@ -62,6 +62,6 @@ def test_row_to_agent_system_ops_stays_system() -> None:
         "is_system": True,
         "departments": {"name": "System Ops"},
         "providers": {"key": "openrouter"},
-        "models": {"model_id": "liquid/lfm-2.5-1.2b-thinking:free"},
+        "models": {"model_id": "cohere/north-mini-code:free"},
     }
     assert repo._row_to_agent(row).kind == "system"

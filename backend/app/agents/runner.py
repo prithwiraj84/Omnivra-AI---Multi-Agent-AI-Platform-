@@ -21,7 +21,7 @@ from app.services.usage import record_agent_call
 _TEXT_FALLBACKS: tuple[tuple[str, str], ...] = (
     ("groq", "llama-3.3-70b-versatile"),
     ("google_ai", "gemini-3.1-flash-lite"),
-    ("openrouter", "z-ai/glm-4.5-air:free"),
+    ("openrouter", "nvidia/nemotron-3-ultra-550b-a55b:free"),
 )
 
 

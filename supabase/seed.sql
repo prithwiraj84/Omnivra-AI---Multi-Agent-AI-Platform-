@@ -43,9 +43,9 @@ from (values
   ('google_ai_studio','gemini-3.1-flash-lite',                    'Gemini 3.1 Flash Lite',     'multimodal', false),
   ('groq',            'openai/gpt-oss-120b',                      'GPT-OSS 120B',              'text',       false),
   ('openrouter',      'nvidia/nemotron-3-super-120b-a12b:free',   'Nemotron 3 Super 120B (free)','text',     true),
-  ('openrouter',      'poolside/laguna-xs.2:free',                'Poolside Laguna XS.2 (free)','text',      true),
-  ('openrouter',      'z-ai/glm-4.5-air:free',                    'GLM 4.5 Air (free)',        'text',       true),
-  ('openrouter',      'moonshotai/kimi-k2.6:free',                'Kimi K2.6 (free)',          'text',       true),
+  ('openrouter',      'nvidia/nemotron-3-ultra-550b-a55b:free',   'Nemotron 3 Ultra 550B (free)','text',     true),
+  ('openrouter',      'poolside/laguna-s-2.1:free',               'Poolside Laguna S 2.1 (free)','text',     true),
+  ('openrouter',      'inclusionai/ling-3.0-flash:free',          'Ling 3.0 Flash (free)',     'text',       true),
   ('openrouter',      'google/gemma-4-31b-it:free',               'Gemma 4 31B IT (free)',     'text',       true),
   ('groq',            'llama-3.3-70b-versatile',                  'Llama 3.3 70B Versatile',   'text',       false),
   ('groq',            'groq/compound',                            'Groq Compound',             'text',       false),
@@ -53,7 +53,7 @@ from (values
   ('groq',            'whisper-large-v3-turbo',                   'Whisper Large v3 Turbo',    'audio_stt',  false),
   ('groq',            'canopylabs/orpheus-v1-english',            'Orpheus v1 (English TTS)',  'audio_tts',  false),
   ('huggingface',     'black-forest-labs/FLUX.1-schnell',         'FLUX.1-schnell',            'image',      false),
-  ('openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',        'LFM 2.5 1.2B Thinking (free)','text',     true)
+  ('openrouter',      'cohere/north-mini-code:free',              'North Mini Code (free)',    'text',       true)
 ) as m(provider_key, model_id, display_name, modality, is_free)
 join public.providers p on p.key = m.provider_key::provider_kind
 on conflict (provider_id, model_id) do update set
@@ -68,25 +68,25 @@ select a.key, a.name, a.title, d.id, p.id, mo.id, a.icon, a.is_system, a.sort_or
 from (values
   -- key, name, title, dept_key, provider_key, model_id, icon, is_system, sort
   ('ceo_manager',        'CEO / Manager',        'Chief Executive',     'executive',      'google_ai_studio','gemini-3.1-flash-lite',                  'crown',        false, 1),
-  ('solution_architect', 'Solution Architect',   'System Design',       'architecture',   'openrouter',      'openai/gpt-oss-120b:free',               'layout-grid',  false, 2),
+  ('solution_architect', 'Solution Architect',   'System Design',       'architecture',   'groq',            'openai/gpt-oss-120b',                    'layout-grid',  false, 2),
   ('uiux_designer',      'UI/UX Designer',       'Product Design',      'design',         'google_ai_studio','gemini-3.1-flash-lite',                  'palette',      false, 3),
   ('database_engineer',  'Database Engineer',    'Data Platform',       'engineering',    'openrouter',      'nvidia/nemotron-3-super-120b-a12b:free', 'database',     false, 4),
-  ('frontend_engineer',  'Frontend Engineer',    'UI Engineering',      'engineering',    'openrouter',      'poolside/laguna-xs.2:free',              'monitor',      false, 5),
-  ('backend_engineer',   'Backend Engineer',     'Services',            'engineering',    'openrouter',      'z-ai/glm-4.5-air:free',                  'server',       false, 6),
-  ('api_engineer',       'API Engineer',         'Integrations',        'engineering',    'openrouter',      'z-ai/glm-4.5-air:free',                  'plug',         false, 7),
+  ('frontend_engineer',  'Frontend Engineer',    'UI Engineering',      'engineering',    'openrouter',      'poolside/laguna-s-2.1:free',             'monitor',      false, 5),
+  ('backend_engineer',   'Backend Engineer',     'Services',            'engineering',    'openrouter',      'nvidia/nemotron-3-ultra-550b-a55b:free', 'server',       false, 6),
+  ('api_engineer',       'API Engineer',         'Integrations',        'engineering',    'openrouter',      'nvidia/nemotron-3-ultra-550b-a55b:free', 'plug',         false, 7),
   ('qa_engineer',        'QA Engineer',          'Quality Assurance',   'quality_security','google_ai_studio','gemini-3.1-flash-lite',                  'bug',          false, 8),
-  ('secops_engineer',    'SecOps Engineer',      'Security',            'quality_security','openrouter',     'openai/gpt-oss-120b:free',               'shield-check', false, 9),
+  ('secops_engineer',    'SecOps Engineer',      'Security',            'quality_security','groq',           'openai/gpt-oss-120b',                    'shield-check', false, 9),
   ('seo_researcher',     'SEO Researcher',       'Search',              'marketing',      'groq',            'groq/compound',                          'search',       false, 10),
-  ('social_strategist',  'Social Strategist',    'Social',              'marketing',      'openrouter',      'moonshotai/kimi-k2.6:free',              'share-2',      false, 11),
+  ('social_strategist',  'Social Strategist',    'Social',              'marketing',      'openrouter',      'inclusionai/ling-3.0-flash:free',        'share-2',      false, 11),
   ('reel_automation',    'Reel Automation',      'Video',               'marketing',      'groq',            'llama-3.1-8b-instant',                   'film',         false, 12),
   ('documentation_agent','Documentation Agent',  'Docs',                'documentation',  'openrouter',      'google/gemma-4-31b-it:free',             'file-text',    false, 13),
   ('presentation_designer','Presentation Designer','Decks',             'documentation',  'openrouter',      'google/gemma-4-31b-it:free',             'presentation', false, 14),
   ('recovery_agent',     'Recovery Agent',       'Resume & Recovery',   'recovery',       'openrouter',      'nvidia/nemotron-3-super-120b-a12b:free', 'life-buoy',    false, 15),
-  ('task_classifier',    'Task Classifier',      'System Ops',          'system_ops',     'openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',      'tags',         true,  16),
-  ('workflow_router',    'Workflow Router',      'System Ops',          'system_ops',     'openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',      'git-branch',   true,  17),
-  ('memory_retrieval',   'Memory Retrieval',     'System Ops',          'system_ops',     'openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',      'brain',        true,  18),
-  ('notification_agent', 'Notification Agent',   'System Ops',          'system_ops',     'openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',      'bell',         true,  19),
-  ('log_analyzer',       'Log Analyzer',         'System Ops',          'system_ops',     'openrouter',      'liquid/lfm-2.5-1.2b-thinking:free',      'scroll-text',  true,  20),
+  ('task_classifier',    'Task Classifier',      'System Ops',          'system_ops',     'openrouter',      'cohere/north-mini-code:free',            'tags',         true,  16),
+  ('workflow_router',    'Workflow Router',      'System Ops',          'system_ops',     'openrouter',      'cohere/north-mini-code:free',            'git-branch',   true,  17),
+  ('memory_retrieval',   'Memory Retrieval',     'System Ops',          'system_ops',     'openrouter',      'cohere/north-mini-code:free',            'brain',        true,  18),
+  ('notification_agent', 'Notification Agent',   'System Ops',          'system_ops',     'openrouter',      'cohere/north-mini-code:free',            'bell',         true,  19),
+  ('log_analyzer',       'Log Analyzer',         'System Ops',          'system_ops',     'openrouter',      'cohere/north-mini-code:free',            'scroll-text',  true,  20),
   ('speech_to_text',     'Speech-to-Text',       'Media',               'media',          'groq',            'whisper-large-v3-turbo',                 'mic',          true,  21),
   ('text_to_speech',     'Text-to-Speech',       'Media',               'media',          'groq',            'canopylabs/orpheus-v1-english',          'volume-2',     true,  22),
   ('image_generation',   'Image Generation',     'Media',               'media',          'huggingface',     'black-forest-labs/FLUX.1-schnell',       'image',        true,  23)

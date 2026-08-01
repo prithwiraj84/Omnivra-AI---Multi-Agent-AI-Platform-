@@ -126,7 +126,7 @@ class SupabaseRepository:
         key = str(row.get("key", ""))
         # is_system marks BOTH Media + System-Ops agents in the schema; distinguish by
         # department so Media (Whisper/Orpheus/FLUX) shows in the agent grid — not under
-        # the "System Operations (LFM 1.2B)" row. Mirrors the registry's AgentKind.
+        # the "System Operations (North Mini Code)" row. Mirrors the registry's AgentKind.
         kind = "media" if department == "Media" else ("system" if row.get("is_system") else "text")
 
         return Agent(

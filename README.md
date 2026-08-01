@@ -169,21 +169,21 @@ volatile runtime state lives under `workspace/.state/`.
 | Department | Agent | Provider / Model |
 |---|---|---|
 | Executive | CEO / Manager | Google AI Studio · `gemini-3.1-flash-lite` |
-| Architecture | Solution Architect | OpenRouter · `openai/gpt-oss-120b:free` |
+| Architecture | Solution Architect | Groq · `openai/gpt-oss-120b` |
 | Design | UI/UX Designer | Google AI Studio · `gemini-3.1-flash-lite` |
 | Engineering | Database Engineer | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
-| Engineering | Frontend Engineer | OpenRouter · `poolside/laguna-m.1:free` |
-| Engineering | Backend Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
-| Engineering | API Engineer | OpenRouter · `z-ai/glm-4.5-air:free` |
+| Engineering | Frontend Engineer | OpenRouter · `poolside/laguna-s-2.1:free` |
+| Engineering | Backend Engineer | OpenRouter · `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| Engineering | API Engineer | OpenRouter · `nvidia/nemotron-3-ultra-550b-a55b:free` |
 | Quality & Security | QA Engineer | Google AI Studio · `gemini-3.1-flash-lite` |
-| Quality & Security | SecOps Engineer | OpenRouter · `openai/gpt-oss-120b:free` |
+| Quality & Security | SecOps Engineer | Groq · `openai/gpt-oss-120b` |
 | Marketing | SEO Researcher | Groq · `groq/compound` |
-| Marketing | Social Strategist | OpenRouter · `moonshotai/kimi-k2.6:free` |
+| Marketing | Social Strategist | OpenRouter · `inclusionai/ling-3.0-flash:free` |
 | Marketing | Reel Automation | Groq · `llama-3.1-8b-instant` |
 | Documentation | Documentation Agent | OpenRouter · `google/gemma-4-31b-it:free` |
 | Documentation | Presentation Designer | OpenRouter · `google/gemma-4-31b-it:free` |
 | Recovery | Recovery Agent | OpenRouter · `nvidia/nemotron-3-super-120b-a12b:free` |
-| System Ops | Task Classifier, Workflow Router, Memory Retrieval, Notification, Log Analyzer | OpenRouter · `liquid/lfm-2.5-1.2b-thinking:free` |
+| System Ops | Task Classifier, Workflow Router, Memory Retrieval, Notification, Log Analyzer | OpenRouter · `cohere/north-mini-code:free` |
 | Media | Speech-to-Text | Groq · `whisper-large-v3-turbo` |
 | Media | Text-to-Speech | Groq · `canopylabs/orpheus-v1-english` |
 | Media | Image Generation | Hugging Face · `black-forest-labs/FLUX.1-schnell` |

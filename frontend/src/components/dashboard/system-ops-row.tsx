@@ -8,7 +8,7 @@ export interface SystemOpsRowProps {
 
 /**
  * SystemOpsRow — the compact "SYSTEM OPERATIONS" sub-panel beneath the agent
- * grid: a section label + "(LFM 1.2B)" caption and a wrap of online ops chips.
+ * grid: a section label + "(North Mini Code)" caption and a wrap of online ops chips.
  * Presentational; the assembler supplies `ops`.
  */
 export function SystemOpsRow({ ops }: SystemOpsRowProps) {
@@ -16,7 +16,7 @@ export function SystemOpsRow({ ops }: SystemOpsRowProps) {
     <div className="mt-4 rounded-lg border border-white/[0.06] bg-omnivra-surface p-3">
       <div className="mb-2.5 flex items-center gap-2">
         <span className="section-label">System Operations</span>
-        <span className="text-[10px] font-medium text-zinc-600">(LFM 1.2B)</span>
+        <span className="text-[10px] font-medium text-zinc-600">(North Mini Code)</span>
       </div>
       <div className="flex flex-wrap gap-2">
         {ops.map((op) => (

@@ -87,7 +87,7 @@ const DEPARTMENTS: Dept[] = [
     accent: 'violet',
     tagline: 'Turns an idea into a system design and a file-by-file build manifest.',
     agents: [
-      { name: 'Solution Architect', icon: Compass, model: 'gpt-oss-120b', provider: 'openrouter', tools: ['System design', 'File manifest'] },
+      { name: 'Solution Architect', icon: Compass, model: 'openai/gpt-oss-120b', provider: 'groq', tools: ['System design', 'File manifest'] },
     ],
   },
   {
@@ -108,9 +108,9 @@ const DEPARTMENTS: Dept[] = [
     tagline: 'A four-person squad that ships the schema, the API, the backend, and the frontend.',
     agents: [
       { name: 'Database Engineer', icon: Database, model: 'nemotron-3-super-120b', provider: 'openrouter', tools: ['Schema design', 'Migrations', 'pgvector'] },
-      { name: 'Backend Engineer', icon: Server, model: 'glm-4.5-air', provider: 'openrouter', tools: ['FastAPI services', 'Business logic'] },
-      { name: 'Frontend Engineer', icon: MonitorSmartphone, model: 'laguna-xs.2', provider: 'openrouter', tools: ['React components', 'State', 'Styling'] },
-      { name: 'API Engineer', icon: Webhook, model: 'glm-4.5-air', provider: 'openrouter', tools: ['Endpoint design', 'Contracts', 'Integration'] },
+      { name: 'Backend Engineer', icon: Server, model: 'nemotron-3-ultra-550b', provider: 'openrouter', tools: ['FastAPI services', 'Business logic'] },
+      { name: 'Frontend Engineer', icon: MonitorSmartphone, model: 'laguna-s-2.1', provider: 'openrouter', tools: ['React components', 'State', 'Styling'] },
+      { name: 'API Engineer', icon: Webhook, model: 'nemotron-3-ultra-550b', provider: 'openrouter', tools: ['Endpoint design', 'Contracts', 'Integration'] },
     ],
   },
   {
@@ -121,7 +121,7 @@ const DEPARTMENTS: Dept[] = [
     tagline: 'Test plans, audits, and hardening on everything the other departments produce.',
     agents: [
       { name: 'QA Engineer', icon: ScanSearch, model: 'gemini-3.1-flash-lite', provider: 'gemini', tools: ['Test plans', 'Test code', 'Validation'] },
-      { name: 'SecOps Engineer', icon: ShieldCheck, model: 'gpt-oss-120b', provider: 'openrouter', tools: ['Threat modeling', 'Audits', 'Hardening'] },
+      { name: 'SecOps Engineer', icon: ShieldCheck, model: 'openai/gpt-oss-120b', provider: 'groq', tools: ['Threat modeling', 'Audits', 'Hardening'] },
     ],
   },
   {
@@ -132,7 +132,7 @@ const DEPARTMENTS: Dept[] = [
     tagline: 'Research, strategy, and short-form production for every launch.',
     agents: [
       { name: 'SEO Researcher', icon: Globe, model: 'groq/compound', provider: 'groq', tools: ['Keyword research', 'SERP analysis'] },
-      { name: 'Social Strategist', icon: Megaphone, model: 'kimi-k2.6', provider: 'openrouter', tools: ['Content strategy', 'Campaigns'] },
+      { name: 'Social Strategist', icon: Megaphone, model: 'ling-3.0-flash', provider: 'openrouter', tools: ['Content strategy', 'Campaigns'] },
       { name: 'Reel Automation', icon: Clapperboard, model: 'llama-3.1-8b-instant', provider: 'groq', tools: ['Short-form scripts', 'Reel automation'] },
     ],
   },
@@ -164,11 +164,11 @@ const DEPARTMENTS: Dept[] = [
     accent: 'blue',
     tagline: 'The invisible crew that classifies, routes, recalls, notifies, and watches the logs.',
     agents: [
-      { name: 'Task Classifier', icon: Split, model: 'lfm-2.5-thinking', provider: 'openrouter', tools: ['Task classification'] },
-      { name: 'Workflow Router', icon: Route, model: 'lfm-2.5-thinking', provider: 'openrouter', tools: ['Department routing'] },
-      { name: 'Memory Retrieval', icon: FileSearch, model: 'lfm-2.5-thinking', provider: 'openrouter', tools: ['Semantic recall', 'pgvector'] },
-      { name: 'Notification Agent', icon: BellRing, model: 'lfm-2.5-thinking', provider: 'openrouter', tools: ['Alerts', 'Channels'] },
-      { name: 'Log Analyzer', icon: Cpu, model: 'lfm-2.5-thinking', provider: 'openrouter', tools: ['Log analysis', 'Anomalies'] },
+      { name: 'Task Classifier', icon: Split, model: 'north-mini-code', provider: 'openrouter', tools: ['Task classification'] },
+      { name: 'Workflow Router', icon: Route, model: 'north-mini-code', provider: 'openrouter', tools: ['Department routing'] },
+      { name: 'Memory Retrieval', icon: FileSearch, model: 'north-mini-code', provider: 'openrouter', tools: ['Semantic recall', 'pgvector'] },
+      { name: 'Notification Agent', icon: BellRing, model: 'north-mini-code', provider: 'openrouter', tools: ['Alerts', 'Channels'] },
+      { name: 'Log Analyzer', icon: Cpu, model: 'north-mini-code', provider: 'openrouter', tools: ['Log analysis', 'Anomalies'] },
     ],
   },
   {
