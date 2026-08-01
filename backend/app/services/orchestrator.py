@@ -20,6 +20,7 @@ from app.services.artifacts import get_artifact_service
 from app.services.memory import get_memory_service
 from app.services.realtime import emit
 from app.services.workflow_store import find_run, get_workflow_store
+from app.services.provider_keys import set_key_owner
 from app.workspace_fs.paths import safe_project_id
 
 
@@ -147,6 +148,22 @@ def begin_run(task: str, project_id: str | None = None) -> RunResult:
     return run
 
 
+def _project_owner(project_id: str) -> str | None:
+    """The user who owns this project — whose provider API keys the run must use.
+
+    A background run outlives the HTTP request that started it, so the owner is re-derived from
+    the project rather than inherited from request context. None (unknown project) falls back to
+    the admin, i.e. single-admin behavior.
+    """
+    try:
+        from app.services.project_store import get_project_store
+
+        proj = get_project_store().get_project(project_id)
+        return (proj or {}).get("owner_id")
+    except Exception:  # noqa: BLE001 - never let key-owner lookup break a run
+        return None
+
+
 async def run_workflow(task: str, project_id: str | None = None, workflow_id: str | None = None) -> RunResult:
     """Run the orchestration graph; pause + persist at the approval gate if reached.
 
@@ -157,6 +174,8 @@ async def run_workflow(task: str, project_id: str | None = None, workflow_id: st
     workflow_id = workflow_id or ("wf_" + uuid4().hex[:12])
     config = {"configurable": {"thread_id": workflow_id}}
     store = get_workflow_store(pid)
+    # Every provider call inside this run uses the project owner's API keys.
+    set_key_owner(_project_owner(pid))
 
     await emit("workflow", {"workflowId": workflow_id, "projectId": pid, "status": "running", "task": task})
     try:
@@ -226,6 +245,7 @@ async def resume_workflow(workflow_id: str, action: str, note: str | None = None
         located = find_run(workflow_id)
         if located is not None:
             pid, prior = located
+    set_key_owner(_project_owner(pid))  # resume on the project owner's API keys
     store = get_workflow_store(pid)
     if prior is None:
         prior = store.get(workflow_id)

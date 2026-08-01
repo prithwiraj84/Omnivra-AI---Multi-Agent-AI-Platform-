@@ -26,6 +26,9 @@ from app.services.provider_keys import (
 )
 from app.services.secrets_store import get_secrets_store
 
+# Tests run in single-admin/open mode, so every stored key belongs to the admin owner.
+OWNER = get_settings().admin_username
+
 _ALL_KEYS = [s.id for s in PROVIDER_KEY_CATALOG] + [f.key for c in SOCIAL_CONNECTORS for f in c.fields]
 
 
@@ -34,10 +37,10 @@ def _clean_store():
     """Clear every catalog + connector-field key before and after each test (shared singleton)."""
     store = get_secrets_store()
     for k in _ALL_KEYS:
-        store.clear(k)
+        store.clear(OWNER, k)
     yield
     for k in _ALL_KEYS:
-        store.clear(k)
+        store.clear(OWNER, k)
 
 
 # --- masking ---------------------------------------------------------------
@@ -59,39 +62,73 @@ def test_mask_key_long_shows_only_prefix_and_last4():
 def test_store_set_get_clear_and_epoch():
     store = get_secrets_store()
     start = store.epoch
-    assert store.get("openrouter") is None
-    store.set("openrouter", "sk-or-test-123")
-    assert store.get("openrouter") == "sk-or-test-123"
+    assert store.get(OWNER, "openrouter") is None
+    store.set(OWNER, "openrouter", "sk-or-test-123")
+    assert store.get(OWNER, "openrouter") == "sk-or-test-123"
     assert store.epoch == start + 1
-    assert "openrouter" in store.stored_providers()
-    assert store.clear("openrouter") is True
-    assert store.get("openrouter") is None
+    assert "openrouter" in store.stored_providers(OWNER)
+    assert store.clear(OWNER, "openrouter") is True
+    assert store.get(OWNER, "openrouter") is None
     assert store.epoch == start + 2
-    assert store.clear("openrouter") is False  # already gone -> no epoch bump
+    assert store.clear(OWNER, "openrouter") is False  # already gone -> no epoch bump
     assert store.epoch == start + 2
 
 
 def test_store_rejects_bad_values():
     store = get_secrets_store()
     with pytest.raises(ValueError):
-        store.set("groq", "   ")  # empty after strip
+        store.set(OWNER, "groq", "   ")  # empty after strip
     with pytest.raises(ValueError):
-        store.set("groq", "key1,key2")  # comma would split into a bogus pool
+        store.set(OWNER, "groq", "key1,key2")  # comma would split into a bogus pool
     with pytest.raises(ValueError):
-        store.set("groq", "key with space")
-    assert store.get("groq") is None
+        store.set(OWNER, "groq", "key with space")
+    assert store.get(OWNER, "groq") is None
 
 
 def test_store_persists_to_disk_atomically():
     store = get_secrets_store()
-    store.set("pexels", "pexels-abc")
+    store.set(OWNER, "pexels", "pexels-abc")
     path = get_settings().workspace_path / ".state" / "provider_keys.json"
     assert path.exists()
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["keys"]["pexels"] == "pexels-abc"
+    # v2 nests per owner so each user's keys are separate
+    assert data["owners"][OWNER]["pexels"] == "pexels-abc"
     assert not path.with_suffix(".json.tmp").exists()  # temp cleaned up by os.replace
+
+
+def test_keys_are_private_per_user():
+    """Two users configure the same provider independently — neither can see the other's key."""
+    from app.providers.registry import get_provider_registry
+    from app.services.provider_keys import key_owner
+
+    store = get_secrets_store()
+    try:
+        store.set("user-A", "openrouter", "sk-A-secret")
+        store.set("user-B", "openrouter", "sk-B-secret")
+
+        # each owner resolves only their own key
+        assert resolve_provider_key("openrouter", owner="user-A") == "sk-A-secret"
+        assert resolve_provider_key("openrouter", owner="user-B") == "sk-B-secret"
+        # a third user has none at all
+        assert resolve_provider_key("openrouter", owner="user-C") is None
+
+        # the context owner drives resolution + the status payload with no explicit argument
+        with key_owner("user-A"):
+            assert resolve_provider_key("openrouter") == "sk-A-secret"
+            row = next(r for r in provider_key_status() if r["id"] == "openrouter")
+            assert row["masked"] == "sk-A…cret"
+            assert "sk-B-secret" not in str(row)
+            # and the provider CLIENT is built per owner, never shared across users
+            assert get_provider_registry().get("openrouter")._keys == ["sk-A-secret"]
+        with key_owner("user-B"):
+            assert get_provider_registry().get("openrouter")._keys == ["sk-B-secret"]
+        with key_owner("user-C"):
+            assert get_provider_registry().get("openrouter").is_configured is False
+    finally:
+        for u in ("user-A", "user-B"):
+            store.clear(u, "openrouter")
 
 
 # --- resolver precedence ---------------------------------------------------
@@ -107,12 +144,12 @@ def test_resolve_precedence_stored_over_env(monkeypatch):
     assert key_source("openrouter") == "env"
 
     # stored overrides env
-    store.set("openrouter", "stored-key-xyz")
+    store.set(OWNER, "openrouter", "stored-key-xyz")
     assert resolve_provider_key("openrouter") == "stored-key-xyz"
     assert key_source("openrouter") == "stored"
 
     # clear -> falls back to env
-    store.clear("openrouter")
+    store.clear(OWNER, "openrouter")
     assert resolve_provider_key("openrouter") == "env-key-abc"
 
 
@@ -124,7 +161,7 @@ def test_unknown_provider():
 
 # --- status shape ----------------------------------------------------------
 def test_provider_key_status_shape_no_raw_secrets():
-    get_secrets_store().set("groq", "gsk-secret-value-1234")
+    get_secrets_store().set(OWNER, "groq", "gsk-secret-value-1234")
     rows = {r["id"]: r for r in provider_key_status()}
     assert set(rows) == {s.id for s in PROVIDER_KEY_CATALOG}
     groq = rows["groq"]
@@ -143,10 +180,10 @@ def test_provider_key_status_shape_no_raw_secrets():
 def test_registry_picks_up_saved_key_without_restart():
     reg = get_provider_registry()
     assert reg.get("openrouter").is_configured is False
-    get_secrets_store().set("openrouter", "sk-or-live-key")
+    get_secrets_store().set(OWNER, "openrouter", "sk-or-live-key")
     # epoch advanced -> the cached client is refreshed in place on the next get()
     assert reg.get("openrouter").is_configured is True
-    get_secrets_store().clear("openrouter")
+    get_secrets_store().clear(OWNER, "openrouter")
     assert reg.get("openrouter").is_configured is False
 
 
@@ -232,16 +269,16 @@ def test_social_connector_status_shape_no_raw_secrets():
 def test_connector_configured_requires_all_required_fields():
     store = get_secrets_store()
     assert connector_configured("linkedin") is False
-    store.set("linkedin_access_token", "li-token-abcdef")
+    store.set(OWNER, "linkedin_access_token", "li-token-abcdef")
     assert connector_configured("linkedin") is True
 
     # twitter needs all four; one missing -> not configured
     assert connector_configured("twitter") is False
-    store.set("twitter_api_key", "ak")
-    store.set("twitter_api_secret", "as")
-    store.set("twitter_access_token", "at")
+    store.set(OWNER, "twitter_api_key", "ak")
+    store.set(OWNER, "twitter_api_secret", "as")
+    store.set(OWNER, "twitter_access_token", "at")
     assert connector_configured("twitter") is False
-    store.set("twitter_access_secret", "asec")
+    store.set(OWNER, "twitter_access_secret", "asec")
     assert connector_configured("twitter") is True
 
 
@@ -251,7 +288,7 @@ def test_social_field_resolver_precedence(monkeypatch):
     monkeypatch.setattr(get_settings(), "facebook_page_token", "env-fb-tok", raising=False)
     assert resolve_provider_key("facebook_page_token") == "env-fb-tok"
     # stored overrides env
-    get_secrets_store().set("facebook_page_token", "stored-fb-tok")
+    get_secrets_store().set(OWNER, "facebook_page_token", "stored-fb-tok")
     assert resolve_provider_key("facebook_page_token") == "stored-fb-tok"
 
 
@@ -259,8 +296,8 @@ def test_publishers_is_configured_reflects_stored_creds():
     from app.services import publishers
 
     assert publishers.is_configured("facebook") is False
-    get_secrets_store().set("facebook_page_id", "123")
-    get_secrets_store().set("facebook_page_token", "fb-token")
+    get_secrets_store().set(OWNER, "facebook_page_id", "123")
+    get_secrets_store().set(OWNER, "facebook_page_token", "fb-token")
     assert publishers.is_configured("facebook") is True
 
 

@@ -19,13 +19,28 @@ stored (saved in the app)  →  env (backend/.env)  →  not configured (offline
 A key you **save in the app overrides** the env one; **remove** it to fall back to env. If you
 never save a key in the app, behavior is exactly as before (env is used verbatim).
 
+## Keys are PER USER
+
+In per-user mode (`PER_USER_WORKSPACES=true`) every signed-in user configures **their own**
+providers — you never see anyone else's keys, and agent runs use **the key of whoever owns the
+project**. In single-admin/open mode there's one owner (the admin), exactly as before.
+
 ## Where keys are stored
 
-In-app keys live in `workspace/.state/provider_keys.json` on the server. That file is
-**gitignored** and never leaves the machine. Plaintext-at-rest is acceptable for this
-single-admin, offline-first, localhost product — it's the same trust level as `backend/.env`.
-The API never returns a raw key: a card only ever shows a **masked hint** (e.g. `sk-o…wxyz`) of a
-key you saved, and env keys are never echoed back at all.
+| Backend | When | Durable? |
+|---|---|---|
+| **Supabase** (`provider_keys` table) | `SUPABASE_URL` + service-role key are set | ✅ yes |
+| `workspace/.state/provider_keys.json` | otherwise (local dev) | only as long as the disk lives |
+
+> ⚠️ **Hosted deployments must use Supabase.** Container filesystems on Hugging Face Spaces,
+> Render and Fly are **ephemeral** — anything written to disk is wiped on the next restart, so
+> file-stored keys silently revert to *"Not configured."* Run **`supabase/provider_keys.sql`**
+> once in the Supabase SQL Editor to create the table.
+
+The table is locked down with RLS and no permissive policy, so only the backend (service-role,
+which bypasses RLS) can read or write it — the browser never can. The API never returns a raw
+key either: a card only ever shows a **masked hint** (e.g. `sk-o…wxyz`) of a key you saved, and
+env keys are never echoed back at all.
 
 ## Providers & where to get a key
 

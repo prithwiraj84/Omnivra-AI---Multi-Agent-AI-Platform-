@@ -14,7 +14,11 @@ from app.schemas.social import SocialDraft
 from app.services import facebook, instagram, linkedin, storage, twitter
 from app.services.post_text import build_post_text
 from app.services.provider_keys import SOCIAL_CONNECTORS
+from app.core.config import get_settings
 from app.services.secrets_store import get_secrets_store
+
+# Tests run in single-admin/open mode, so every stored key belongs to the admin owner.
+OWNER = get_settings().admin_username
 from app.workspace_fs.paths import project_root
 
 _SOCIAL_KEYS = [f.key for c in SOCIAL_CONNECTORS for f in c.fields]
@@ -25,10 +29,10 @@ def _clean_social_store():
     """Isolate the shared SecretsStore singleton across these tests + other modules."""
     store = get_secrets_store()
     for k in _SOCIAL_KEYS:
-        store.clear(k)
+        store.clear(OWNER, k)
     yield
     for k in _SOCIAL_KEYS:
-        store.clear(k)
+        store.clear(OWNER, k)
 
 
 def _draft(**over) -> SocialDraft:
@@ -94,8 +98,8 @@ def test_storage_unconfigured_in_tests():
 
 def test_instagram_configured_gates_on_video_then_storage():
     store = get_secrets_store()
-    store.set("instagram_user_id", "123")
-    store.set("instagram_access_token", "IGtoken")
+    store.set(OWNER, "instagram_user_id", "123")
+    store.set(OWNER, "instagram_access_token", "IGtoken")
     assert instagram.is_configured() is True
 
     # no rendered video yet -> render-first note (before any network/storage)

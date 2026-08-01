@@ -16,6 +16,7 @@ from app.core.logging import logger
 from app.core.security import verify_token
 from app.db.repositories import DashboardRepository, get_repository
 from app.services.project_store import get_project_store
+from app.services.provider_keys import set_key_owner
 from app.workspace_fs.paths import DEFAULT_PROJECT, safe_project_id
 
 
@@ -105,7 +106,11 @@ def current_user(authorization: str | None = Header(default=None)) -> str:
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid session (no subject)")
-    return str(sub)
+    owner = str(sub)
+    # Provider clients are built deep in the stack with no request in scope, so publish the
+    # owner for this request's context — every resolve_provider_key() then uses THIS user's keys.
+    set_key_owner(owner)
+    return owner
 
 
 def get_project_id(

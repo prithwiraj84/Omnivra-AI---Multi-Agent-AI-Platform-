@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app import __version__, schemas
 from app.agents.registry import AGENT_REGISTRY
-from app.api.deps import get_repo, per_user_mode, require_user
+from app.api.deps import current_user, get_repo, per_user_mode
 from app.core.config import get_settings
 from app.db.client import supabase_configured
 from app.db.repositories import DashboardRepository
@@ -30,8 +30,8 @@ def get_system_health(repo: DashboardRepository = Depends(get_repo)) -> list[sch
 
 
 @router.get("/providers")
-def providers() -> dict[str, bool]:
-    """Provider name -> configured? (drives the Integrations view's status dots)."""
+def providers(_current: str = Depends(current_user)) -> dict[str, bool]:
+    """Provider name -> configured? for THIS user (drives the Integrations status dots)."""
     return get_provider_registry().status()
 
 
@@ -67,8 +67,9 @@ def checkpoints() -> list[dict[str, object]]:
 
 # --- In-app provider API-key configuration (Integrations → API keys) -----------------------
 # Lets the admin set/clear LLM & media provider keys from the website when they aren't in
-# backend/.env. Keys are persisted to workspace/.state/provider_keys.json (gitignored) and used
-# at call time. Responses NEVER contain raw key values — only a masked hint of a stored key.
+# backend/.env. Keys are PER USER and stored durably (Supabase when configured, else a
+# gitignored workspace file) and used at call time. Responses NEVER contain raw key values —
+# only a masked hint of a stored key.
 
 
 class ProviderKeyUpdate(BaseModel):
@@ -82,43 +83,43 @@ def _provider_or_404(provider_id: str) -> None:
         raise HTTPException(status_code=404, detail=f"Unknown provider {provider_id!r}")
 
 
-def _single_status(provider_id: str) -> dict[str, object]:
-    for row in provider_key_status():
+def _single_status(provider_id: str, owner: str) -> dict[str, object]:
+    for row in provider_key_status(owner):
         if row["id"] == provider_id:
             return row
     raise HTTPException(status_code=404, detail=f"Unknown provider {provider_id!r}")
 
 
 @router.get("/provider-keys")
-def list_provider_keys(_user: str = Depends(require_user)) -> list[dict[str, object]]:
-    """Per-provider key status (env/stored/none + masked hint). No raw secrets are returned."""
-    return provider_key_status()
+def list_provider_keys(current: str = Depends(current_user)) -> list[dict[str, object]]:
+    """This user's per-provider key status (env/stored/none + masked). No raw secrets returned."""
+    return provider_key_status(current)
 
 
 @router.put("/provider-keys/{provider_id}")
 def set_provider_key(
     provider_id: str,
     body: ProviderKeyUpdate,
-    _user: str = Depends(require_user),
+    current: str = Depends(current_user),
 ) -> dict[str, object]:
-    """Store (or replace) a provider key. The provider layer uses it on the next call."""
+    """Store (or replace) THIS USER's provider key. Used on their very next call."""
     _provider_or_404(provider_id)
     try:
-        get_secrets_store().set(provider_id, body.value)
+        get_secrets_store().set(current, provider_id, body.value)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _single_status(provider_id)
+    return _single_status(provider_id, current)
 
 
 @router.delete("/provider-keys/{provider_id}")
 def clear_provider_key(
     provider_id: str,
-    _user: str = Depends(require_user),
+    current: str = Depends(current_user),
 ) -> dict[str, object]:
-    """Remove a stored provider key (falls back to the env key, if any)."""
+    """Remove THIS USER's stored provider key (falls back to the env key, if any)."""
     _provider_or_404(provider_id)
-    get_secrets_store().clear(provider_id)
-    return _single_status(provider_id)
+    get_secrets_store().clear(current, provider_id)
+    return _single_status(provider_id, current)
 
 
 # --- Social publishing connectors (multi-field: YouTube/LinkedIn/Facebook/Instagram/X) -------
@@ -136,24 +137,24 @@ def _connector_or_404(connector_id: str) -> None:
         raise HTTPException(status_code=404, detail=f"Unknown connector {connector_id!r}")
 
 
-def _single_connector(connector_id: str) -> dict[str, object]:
-    for row in social_connector_status():
+def _single_connector(connector_id: str, owner: str) -> dict[str, object]:
+    for row in social_connector_status(owner):
         if row["id"] == connector_id:
             return row
     raise HTTPException(status_code=404, detail=f"Unknown connector {connector_id!r}")
 
 
 @router.get("/social-connectors")
-def list_social_connectors(_user: str = Depends(require_user)) -> list[dict[str, object]]:
-    """Per-platform publishing-credential status (multi-field). No raw secrets are returned."""
-    return social_connector_status()
+def list_social_connectors(current: str = Depends(current_user)) -> list[dict[str, object]]:
+    """This user's per-platform publishing-credential status. No raw secrets are returned."""
+    return social_connector_status(current)
 
 
 @router.put("/social-connectors/{connector_id}")
 def set_social_connector(
     connector_id: str,
     body: SocialConnectorUpdate,
-    _user: str = Depends(require_user),
+    current: str = Depends(current_user),
 ) -> dict[str, object]:
     """Set/clear a connector's credential fields (only keys belonging to this connector)."""
     _connector_or_404(connector_id)
@@ -163,26 +164,26 @@ def set_social_connector(
         if key not in allowed:
             continue  # ignore stray keys — never let one connector write another's fields
         if value is None or not value.strip():
-            store.clear(key)
+            store.clear(current, key)
         else:
             try:
-                store.set(key, value)
+                store.set(current, key, value)
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=f"{key}: {exc}") from exc
-    return _single_connector(connector_id)
+    return _single_connector(connector_id, current)
 
 
 @router.delete("/social-connectors/{connector_id}")
 def clear_social_connector(
     connector_id: str,
-    _user: str = Depends(require_user),
+    current: str = Depends(current_user),
 ) -> dict[str, object]:
-    """Remove ALL stored credentials for a connector (fields fall back to env, if any)."""
+    """Remove THIS USER's stored credentials for a connector (fields fall back to env)."""
     _connector_or_404(connector_id)
     store = get_secrets_store()
     for key in connector_field_keys(connector_id):
-        store.clear(key)
-    return _single_connector(connector_id)
+        store.clear(current, key)
+    return _single_connector(connector_id, current)
 
 
 @router.get("/info")

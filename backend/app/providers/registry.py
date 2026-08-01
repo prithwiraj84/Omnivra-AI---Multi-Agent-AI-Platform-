@@ -13,7 +13,7 @@ from app.providers.google_ai import GoogleAIProvider
 from app.providers.groq import GroqProvider
 from app.providers.huggingface import HuggingFaceProvider
 from app.providers.openrouter import OpenRouterProvider
-from app.services.provider_keys import resolve_provider_key
+from app.services.provider_keys import current_key_owner, resolve_provider_key
 from app.services.secrets_store import get_secrets_store
 
 PROVIDER_NAMES = ("google_ai", "openrouter", "groq", "huggingface")
@@ -30,32 +30,36 @@ class ProviderRegistry:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._cache: dict[str, BaseProvider] = {}
-        self._epoch: dict[str, int] = {}
+        # Cached PER OWNER: each user runs on their own API keys, so a client built for one user
+        # must never be handed to another. Key = (owner, provider).
+        self._cache: dict[tuple[str, str], BaseProvider] = {}
+        self._epoch: dict[tuple[str, str], int] = {}
 
     def get(self, name: str) -> BaseProvider:
+        owner = current_key_owner()
+        ck = (owner, name)
         epoch = get_secrets_store().epoch
-        client = self._cache.get(name)
+        client = self._cache.get(ck)
         if client is None:
-            client = self._build(name)
-            self._cache[name] = client
-            self._epoch[name] = epoch
+            client = self._build(name, owner)
+            self._cache[ck] = client
+            self._epoch[ck] = epoch
             return client
-        if self._epoch.get(name) != epoch:
+        if self._epoch.get(ck) != epoch:
             # A key was saved/cleared since we built this client — refresh its pool in place.
-            client.set_keys(resolve_provider_key(name))
-            self._epoch[name] = epoch
+            client.set_keys(resolve_provider_key(name, owner=owner))
+            self._epoch[ck] = epoch
         return client
 
-    def _build(self, name: str) -> BaseProvider:
+    def _build(self, name: str, owner: str) -> BaseProvider:
         s = self._settings
         if name == "google_ai":
             return GoogleAIProvider(
-                api_key=resolve_provider_key("google_ai"), timeout=s.provider_timeout_seconds
+                api_key=resolve_provider_key("google_ai", owner=owner), timeout=s.provider_timeout_seconds
             )
         if name == "openrouter":
             return OpenRouterProvider(
-                api_key=resolve_provider_key("openrouter"),
+                api_key=resolve_provider_key("openrouter", owner=owner),
                 base_url=s.openrouter_base_url,
                 site_url=s.openrouter_site_url,
                 app_name=s.openrouter_app_name,
@@ -63,19 +67,19 @@ class ProviderRegistry:
             )
         if name == "groq":
             return GroqProvider(
-                api_key=resolve_provider_key("groq"),
+                api_key=resolve_provider_key("groq", owner=owner),
                 base_url=s.groq_base_url,
                 timeout=s.provider_timeout_seconds,
             )
         if name == "huggingface":
             return HuggingFaceProvider(
-                api_key=resolve_provider_key("huggingface"),
+                api_key=resolve_provider_key("huggingface", owner=owner),
                 endpoint=s.huggingface_inference_endpoint,
             )
         raise KeyError(f"Unknown provider: {name!r}. Expected one of {PROVIDER_NAMES}")
 
     def status(self) -> dict[str, bool]:
-        """Map provider name -> configured? (drives provider 'online' dots)."""
+        """Map provider name -> configured? for the CURRENT owner (drives the 'online' dots)."""
         return {n: self.get(n).is_configured for n in PROVIDER_NAMES}
 
     async def aclose(self) -> None:

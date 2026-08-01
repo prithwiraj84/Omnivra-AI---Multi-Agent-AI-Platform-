@@ -13,6 +13,8 @@ honest about where the running key came from.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -20,6 +22,35 @@ from app.core.config import get_settings
 from app.services.secrets_store import get_secrets_store
 
 KeySource = Literal["stored", "env", "none"]
+
+# --- whose keys am I resolving? --------------------------------------------------------------
+# Provider clients are built deep inside the stack (registry, media, publishers) with no request
+# in scope, so the owning user travels in a ContextVar. It is set in two places, deterministically:
+#   * per HTTP request  -> the `current_user` dependency (api/deps.py)
+#   * per agent run     -> from the run's PROJECT owner (services/orchestrator.py), because a
+#                          background run outlives the request that started it.
+# Unset (tests, CLI, single-admin mode) resolves to the admin, i.e. exactly the old behavior.
+_CURRENT_OWNER: ContextVar[str | None] = ContextVar("omnivra_key_owner", default=None)
+
+
+def current_key_owner() -> str:
+    """The identity whose provider keys apply right now."""
+    return _CURRENT_OWNER.get() or get_settings().admin_username
+
+
+@contextmanager
+def key_owner(owner: str | None):
+    """Scope provider-key resolution to `owner` for the duration of the block."""
+    token = _CURRENT_OWNER.set(owner)
+    try:
+        yield
+    finally:
+        _CURRENT_OWNER.reset(token)
+
+
+def set_key_owner(owner: str | None) -> None:
+    """Set the owner for the CURRENT context (used by the per-request dependency)."""
+    _CURRENT_OWNER.set(owner)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,17 +187,21 @@ def _env_key(provider: str) -> str | None:
     return value or None
 
 
-def resolve_provider_key(provider: str) -> str | None:
-    """The effective key for a provider/field: stored overrides env; None when neither is set."""
-    stored = get_secrets_store().get(provider)
+def resolve_provider_key(provider: str, *, owner: str | None = None) -> str | None:
+    """The effective key for a provider/field: this owner's stored key overrides env.
+
+    `owner` defaults to the current context owner (see `key_owner`), so callers deep in the
+    provider stack need no plumbing. None when neither a stored nor an env key exists.
+    """
+    stored = get_secrets_store().get(owner or current_key_owner(), provider)
     if stored:
         return stored
     return _env_key(provider)
 
 
-def key_source(provider: str) -> KeySource:
+def key_source(provider: str, *, owner: str | None = None) -> KeySource:
     """Where the ACTIVE key comes from ('stored' | 'env' | 'none')."""
-    if get_secrets_store().get(provider):
+    if get_secrets_store().get(owner or current_key_owner(), provider):
         return "stored"
     if _env_key(provider):
         return "env"
@@ -186,10 +221,11 @@ def mask_key(raw: str | None) -> str | None:
     return f"{s[:4]}…{s[-4:]}"
 
 
-def provider_key_status() -> list[dict[str, object]]:
+def provider_key_status(owner: str | None = None) -> list[dict[str, object]]:
     """Per-provider status for GET /system/provider-keys. NEVER includes raw key values."""
+    who = owner or current_key_owner()
     store = get_secrets_store()
-    stored = store.stored_providers()
+    stored = store.stored_providers(who)
     out: list[dict[str, object]] = []
     for spec in PROVIDER_KEY_CATALOG:
         env_set = _env_key(spec.id) is not None
@@ -208,24 +244,25 @@ def provider_key_status() -> list[dict[str, object]]:
                 "configured": source != "none",
                 # Only the STORED key is ever surfaced (masked) so the admin can recognize what
                 # they saved; env keys are never echoed back, masked or otherwise.
-                "masked": mask_key(store.get(spec.id)) if stored_set else None,
+                "masked": mask_key(store.get(who, spec.id)) if stored_set else None,
             }
         )
     return out
 
 
-def connector_configured(connector_id: str) -> bool:
+def connector_configured(connector_id: str, *, owner: str | None = None) -> bool:
     """True when every REQUIRED field of a social connector resolves (stored or env)."""
     c = _CONNECTOR_BY_ID.get(connector_id)
     if not c:
         return False
-    return all(resolve_provider_key(f.key) is not None for f in c.fields if f.required)
+    return all(resolve_provider_key(f.key, owner=owner) is not None for f in c.fields if f.required)
 
 
-def social_connector_status() -> list[dict[str, object]]:
+def social_connector_status(owner: str | None = None) -> list[dict[str, object]]:
     """Per-connector status for GET /system/social-connectors. NEVER includes raw values."""
+    who = owner or current_key_owner()
     store = get_secrets_store()
-    stored = store.stored_providers()
+    stored = store.stored_providers(who)
     out: list[dict[str, object]] = []
     for c in SOCIAL_CONNECTORS:
         fields: list[dict[str, object]] = []
@@ -247,7 +284,7 @@ def social_connector_status() -> list[dict[str, object]]:
                     "envSet": env_set,
                     "storedSet": stored_set,
                     "source": source,
-                    "masked": mask_key(store.get(f.key)) if stored_set else None,
+                    "masked": mask_key(store.get(who, f.key)) if stored_set else None,
                 }
             )
         out.append(

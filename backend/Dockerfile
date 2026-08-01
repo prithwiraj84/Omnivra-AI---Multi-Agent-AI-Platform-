@@ -18,11 +18,14 @@ ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH
 WORKDIR /home/user/app
 
-# Deps first for layer caching. requirements-docs.txt enables Document Studio (PPTX/DOCX/PDF).
-# requirements-render.txt (moviepy/ffmpeg) is heavy + optional -> omitted so the image stays lean
-# (reels run in stub mode). To enable real .mp4 reels, add it to the pip line below.
-COPY --chown=user:user requirements.txt requirements-docs.txt ./
-RUN pip install --user -r requirements.txt -r requirements-docs.txt
+# Deps first for layer caching.
+#   requirements-docs.txt   -> Document Studio (PPTX/DOCX/PDF)
+#   requirements-render.txt -> the Social Studio REEL RENDER ENGINE (moviepy + imageio-ffmpeg,
+#     which vendors a static FFmpeg, + pillow for captions). Without it render_available() is
+#     false and reels stay stubbed — that's the "no render engine in Social Studio" symptom.
+#     It adds ~100MB to the image; drop this line if you'd rather keep reels in stub mode.
+COPY --chown=user:user requirements.txt requirements-docs.txt requirements-render.txt ./
+RUN pip install --user -r requirements.txt -r requirements-docs.txt -r requirements-render.txt
 
 COPY --chown=user:user . .
 
