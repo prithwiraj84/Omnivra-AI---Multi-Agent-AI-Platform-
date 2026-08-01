@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app import __version__, schemas
 from app.agents.registry import AGENT_REGISTRY
-from app.api.deps import get_repo, require_user
+from app.api.deps import get_repo, per_user_mode, require_user
 from app.core.config import get_settings
 from app.db.client import supabase_configured
 from app.db.repositories import DashboardRepository
@@ -195,6 +195,9 @@ def system_info() -> dict[str, object]:
         "env": s.app_env,
         "agents": len(AGENT_REGISTRY),
         "authEnabled": s.auth_enabled,
+        # Per-user private workspaces: sign-in IS required in this mode, independently of the
+        # legacy AUTH_ENABLED bearer gate. The UI reports the EFFECTIVE mode from both flags.
+        "perUserWorkspaces": per_user_mode(),
         "rateLimitEnabled": s.rate_limit_enabled,
         "securityHeaders": s.security_headers_enabled,
         "supabaseConfigured": supabase_configured(s),

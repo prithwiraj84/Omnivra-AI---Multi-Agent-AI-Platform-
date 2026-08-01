@@ -7,6 +7,7 @@ import { NeonBadge } from '@/components/ui/neon-badge'
 import { SectionHeader } from '@/components/ui/section-header'
 import { StatusDot } from '@/components/ui/status-dot'
 import { useAuthConfig } from '@/hooks/useAuth'
+import { useSystemInfo } from '@/hooks/useSystem'
 import { backendOrigin } from '@/lib/api/client'
 import { useUIStore, type RealtimeStatus } from '@/store/ui'
 
@@ -68,9 +69,14 @@ const REALTIME_VIEW: Record<
 export function Settings() {
   const { data: health, isError: healthError } = useHealth()
   const { data: authConfig } = useAuthConfig()
+  const { data: info } = useSystemInfo()
   const realtimeStatus = useUIStore((s) => s.realtimeStatus)
 
+  // Two independent gates: per-user Supabase workspaces and the legacy bearer token. Either one
+  // means the app requires a sign-in, so report the effective state rather than just AUTH_ENABLED.
   const authEnabled = authConfig?.authEnabled ?? false
+  const perUser = info?.perUserWorkspaces ?? false
+  const signInRequired = perUser || authEnabled
   const realtime = REALTIME_VIEW[realtimeStatus]
 
   return (
@@ -110,11 +116,13 @@ export function Settings() {
           </div>
         </GlassCard>
 
-        {/* Auth mode */}
+        {/* Auth mode — reports the EFFECTIVE sign-in requirement. Two independent gates exist:
+            per-user Supabase workspaces (PER_USER_WORKSPACES) and the legacy bearer token
+            (AUTH_ENABLED); either one means a login is required. */}
         <GlassCard padding="md" className="h-full">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2.5">
-              {authEnabled ? (
+              {signInRequired ? (
                 <ShieldCheck className="h-4 w-4 text-omnivra-emerald" aria-hidden />
               ) : (
                 <KeyRound className="h-4 w-4 text-omnivra-amber" aria-hidden />
@@ -123,18 +131,21 @@ export function Settings() {
             </div>
             <div className="divide-y divide-white/5">
               <Row label="Mode">
-                <NeonBadge tone={authEnabled ? 'success' : 'warning'} dot>
-                  {authEnabled ? 'Enabled' : 'Open'}
+                <NeonBadge tone={signInRequired ? 'success' : 'warning'} dot>
+                  {perUser ? 'Per-user' : authEnabled ? 'Enabled' : 'Open'}
                 </NeonBadge>
               </Row>
               <Row label="Access">
-                {authEnabled ? 'Login required' : 'No login required'}
+                {signInRequired ? 'Sign-in required' : 'No login required'}
               </Row>
+              {perUser && <Row label="Workspaces">Private per user</Row>}
             </div>
-            <p className="text-xs leading-relaxed text-[#71717a]">
-              {authEnabled
-                ? 'A bearer token is required for protected actions.'
-                : 'Open mode — the app runs without sign-in. Set AUTH_ENABLED=true to require a login.'}
+            <p className="text-xs leading-relaxed text-[#a1a1aa]">
+              {perUser
+                ? 'Each signed-in user gets their own private projects; requests are verified against your Supabase project.'
+                : authEnabled
+                  ? 'A bearer token is required for protected actions.'
+                  : 'Open mode — the app runs without sign-in. Set PER_USER_WORKSPACES=true (Supabase sign-in, private workspaces) or AUTH_ENABLED=true (single admin login).'}
             </p>
           </div>
         </GlassCard>

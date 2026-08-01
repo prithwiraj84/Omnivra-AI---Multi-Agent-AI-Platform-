@@ -19,7 +19,10 @@ export interface SystemInfo {
   version: string
   env: string
   agents: number
+  /** Legacy bearer-token gate (AUTH_ENABLED). */
   authEnabled: boolean
+  /** Per-user private workspaces — sign-in required via Supabase, independent of authEnabled. */
+  perUserWorkspaces?: boolean
   rateLimitEnabled: boolean
   securityHeaders: boolean
   supabaseConfigured: boolean

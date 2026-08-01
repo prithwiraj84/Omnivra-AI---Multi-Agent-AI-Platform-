@@ -167,10 +167,13 @@ export function Integrations() {
     {
       key: 'auth',
       name: 'Authentication',
-      detail: 'JWT bearer auth gate (open in dev)',
+      // Either gate means sign-in is required: per-user Supabase workspaces or the legacy bearer token.
+      detail: info?.perUserWorkspaces
+        ? 'Supabase sign-in · private per-user workspaces'
+        : 'JWT bearer auth gate (open in dev)',
       icon: ShieldCheck,
       accent: 'violet',
-      configured: info?.authEnabled ?? false,
+      configured: (info?.perUserWorkspaces ?? false) || (info?.authEnabled ?? false),
       offLabel: 'Open (dev mode)',
       offTone: 'warning',
       offDot: 'Open',
