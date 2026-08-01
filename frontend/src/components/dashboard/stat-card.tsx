@@ -24,7 +24,7 @@ const deltaBadgeTone: Record<NonNullable<StatCardData['deltaTone']>, BadgeTone> 
  */
 export function StatCard({ label, value, sub, delta, deltaTone, icon, accent }: StatCardProps) {
   return (
-    <GlassCard interactive glow={accent} padding="md" className="flex flex-col gap-3">
+    <GlassCard interactive glow={accent} padding="md" className="flex h-full flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <span className="section-label pt-0.5">{label}</span>
         <IconTile accent={accent} size="sm" icon={icon} />

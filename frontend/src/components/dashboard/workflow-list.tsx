@@ -16,7 +16,7 @@ export interface WorkflowListProps {
  */
 export function WorkflowList({ workflows, onViewAll }: WorkflowListProps) {
   return (
-    <GlassCard>
+    <GlassCard className="flex h-full flex-col">
       <SectionHeader
         label="Active Workflows"
         action={
@@ -26,7 +26,7 @@ export function WorkflowList({ workflows, onViewAll }: WorkflowListProps) {
         }
       />
       {workflows.length === 0 ? (
-        <p className="py-10 text-center text-xs text-zinc-500">No active workflows yet — they appear here as tasks run.</p>
+        <p className="flex flex-1 items-center justify-center px-4 py-10 text-center text-xs text-zinc-500">No active workflows yet — they appear here as tasks run.</p>
       ) : (
         <Stagger className="mt-2 divide-y divide-white/5">
           {workflows.map((workflow) => (

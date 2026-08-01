@@ -253,7 +253,7 @@ export function Profile() {
       {isAuthenticated ? (
         <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Account */}
-          <StaggerItem>
+          <StaggerItem className="h-full">
             <GlassCard padding="md" className="flex h-full flex-col gap-1">
               <SectionHeader label="Account" />
               <div className="divide-y divide-white/[0.05]">
@@ -281,7 +281,7 @@ export function Profile() {
           </StaggerItem>
 
           {/* Sign-in method */}
-          <StaggerItem>
+          <StaggerItem className="h-full">
             <GlassCard padding="md" className="flex h-full flex-col gap-3">
               <SectionHeader label="Sign-in method" />
               <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
@@ -303,7 +303,7 @@ export function Profile() {
           </StaggerItem>
 
           {/* Quick actions */}
-          <StaggerItem>
+          <StaggerItem className="h-full">
             <GlassCard padding="md" className="flex h-full flex-col gap-3">
               <SectionHeader label="Quick actions" />
               <div className="flex flex-col gap-2">
@@ -326,7 +326,7 @@ export function Profile() {
           </StaggerItem>
 
           {/* Session */}
-          <StaggerItem>
+          <StaggerItem className="h-full">
             <GlassCard padding="md" className="flex h-full flex-col gap-3">
               <SectionHeader label="Session" />
               <p className="text-xs leading-relaxed text-[#a1a1aa]">

@@ -127,7 +127,7 @@ function Column({ column, tasks, onMove, onDelete, busyId }: {
 }) {
   const { label, accent, icon: Icon } = column
   return (
-    <GlassCard padding="none" className="flex min-h-[18rem] flex-col overflow-hidden">
+    <GlassCard padding="none" className="flex h-full min-h-[18rem] flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 p-3.5">
         <div className={cn('flex items-center gap-2 text-xs font-semibold uppercase tracking-wide', headerText[accent])}>
           <Icon className="h-4 w-4 shrink-0" aria-hidden />
@@ -139,7 +139,7 @@ function Column({ column, tasks, onMove, onDelete, busyId }: {
       </div>
 
       {tasks.length === 0 ? (
-        <EmptyState icon={ListChecks} title="No tasks" className="flex-1 py-10" />
+        <EmptyState icon={ListChecks} title="No tasks" className="flex flex-1 items-center justify-center py-10" />
       ) : (
         <ScrollArea className="max-h-[30rem] flex-1">
           <Stagger className="flex flex-col gap-2.5 p-3">

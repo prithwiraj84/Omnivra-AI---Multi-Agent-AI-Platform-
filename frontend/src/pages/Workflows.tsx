@@ -172,12 +172,12 @@ export function Workflows() {
       </Reveal>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Reveal delay={0.05}>
+        <Reveal delay={0.05} className="h-full">
           <WorkflowList workflows={workflows} />
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <GlassCard padding="none" className="overflow-hidden">
+        <Reveal delay={0.1} className="h-full">
+          <GlassCard padding="none" className="flex h-full flex-col overflow-hidden">
             <div className="border-b border-white/5 p-5">
               <SectionHeader label="Run History" count={runList.length} />
             </div>
@@ -187,7 +187,7 @@ export function Workflows() {
                 icon={WorkflowIcon}
                 title="No runs yet"
                 hint="Assign a task to generate runs — each one lands here with its full agent breakdown."
-                className="py-16"
+                className="flex flex-1 items-center justify-center py-16"
               />
             ) : (
               <ScrollArea className="max-h-[34rem]">

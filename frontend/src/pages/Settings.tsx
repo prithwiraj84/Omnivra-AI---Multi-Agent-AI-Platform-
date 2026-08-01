@@ -79,8 +79,8 @@ export function Settings() {
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
         {/* App health */}
-        <GlassCard padding="md">
-          <div className="flex flex-col gap-4">
+        <GlassCard padding="md" className="flex h-full flex-col">
+          <div className="flex flex-1 flex-col gap-4">
             <div className="flex items-center gap-2.5">
               <Activity className="h-4 w-4 text-omnivra-cyan" aria-hidden />
               <span className="section-label">System Health</span>
@@ -103,7 +103,7 @@ export function Settings() {
                 </Row>
               </div>
             ) : (
-              <p className="text-sm text-[#71717a]">
+              <p className="flex flex-1 items-center justify-center text-sm text-[#71717a]">
                 {healthError ? 'Backend unavailable.' : 'Loading…'}
               </p>
             )}
@@ -111,7 +111,7 @@ export function Settings() {
         </GlassCard>
 
         {/* Auth mode */}
-        <GlassCard padding="md">
+        <GlassCard padding="md" className="h-full">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2.5">
               {authEnabled ? (
@@ -140,7 +140,7 @@ export function Settings() {
         </GlassCard>
 
         {/* Realtime */}
-        <GlassCard padding="md">
+        <GlassCard padding="md" className="h-full">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2.5">
               <Radio className="h-4 w-4 text-omnivra-cyan" aria-hidden />

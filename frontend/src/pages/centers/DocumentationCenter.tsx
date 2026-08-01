@@ -127,7 +127,7 @@ export function DocumentationCenter() {
         <Reveal delay={0.05}>
           <Stagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {agents.map((agent) => (
-              <StaggerItem key={agent.id}>
+              <StaggerItem key={agent.id} className="h-full">
                 <AgentCard agent={agent} />
               </StaggerItem>
             ))}
@@ -136,8 +136,8 @@ export function DocumentationCenter() {
       )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Reveal delay={0.1}>
-          <GlassCard padding="none" className="overflow-hidden">
+        <Reveal delay={0.1} className="h-full">
+          <GlassCard padding="none" className="flex h-full flex-col overflow-hidden">
             <div className="flex flex-col gap-2 border-b border-white/5 p-5">
               <SectionHeader
                 label="Docs & Decks"
@@ -159,7 +159,7 @@ export function DocumentationCenter() {
                 icon={FileText}
                 title="No docs or decks yet"
                 hint="Run a documentation workflow — generated docs and presentations land here. Browse them in Documents."
-                className="py-14"
+                className="flex flex-1 items-center justify-center py-14"
               />
             ) : (
               <ScrollArea className="max-h-[30rem]">
@@ -175,8 +175,8 @@ export function DocumentationCenter() {
           </GlassCard>
         </Reveal>
 
-        <Reveal delay={0.15}>
-          <GlassCard padding="none" className="overflow-hidden">
+        <Reveal delay={0.15} className="h-full">
+          <GlassCard padding="none" className="flex h-full flex-col overflow-hidden">
             <div className="border-b border-white/5 p-5">
               <SectionHeader label="Recent Documentation Activity" count={docActivity.length} />
             </div>
@@ -186,7 +186,7 @@ export function DocumentationCenter() {
                 icon={History}
                 title="No documentation activity"
                 hint="Documentation agent actions appear here as workflows run."
-                className="py-14"
+                className="flex flex-1 items-center justify-center py-14"
               />
             ) : (
               <ScrollArea className="max-h-[30rem]">

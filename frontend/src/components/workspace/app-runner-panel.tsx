@@ -107,7 +107,7 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
   }, [logs, logsOpen])
 
   return (
-    <GlassCard className="flex flex-col gap-3">
+    <GlassCard className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <Box className="h-4 w-4 shrink-0 text-omnivra-amber" aria-hidden />
         <div className="min-w-0">
@@ -149,7 +149,7 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[#71717a]">{data?.note || 'No runnable backend/frontend detected here.'}</p>
+        <p className="flex flex-1 items-center justify-center text-xs text-[#71717a]">{data?.note || 'No runnable backend/frontend detected here.'}</p>
       )}
 
       {logs && (

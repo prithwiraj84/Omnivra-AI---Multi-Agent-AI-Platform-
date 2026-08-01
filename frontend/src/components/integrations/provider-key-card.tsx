@@ -86,7 +86,7 @@ export function ProviderKeyCard({ meta, status }: { meta: ProviderKeyMeta; statu
   }
 
   return (
-    <GlassCard padding="md" glow={configured ? meta.accent : undefined} className="flex flex-col gap-4">
+    <GlassCard padding="md" glow={configured ? meta.accent : undefined} className="flex h-full flex-col gap-4">
       {/* header + current status */}
       <div className="flex items-start gap-3">
         <IconTile accent={meta.accent} icon={Icon} />

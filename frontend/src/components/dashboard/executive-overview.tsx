@@ -14,7 +14,7 @@ export function ExecutiveOverview({ stats }: ExecutiveOverviewProps) {
   return (
     <Stagger className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
       {stats.map((stat) => (
-        <StaggerItem key={stat.label}>
+        <StaggerItem key={stat.label} className="h-full">
           <StatCard {...stat} />
         </StaggerItem>
       ))}

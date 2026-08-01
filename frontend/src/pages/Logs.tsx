@@ -53,8 +53,8 @@ export function Logs() {
 
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-      <Reveal>
-        <GlassCard padding="none" className="overflow-hidden">
+      <Reveal className="h-full">
+        <GlassCard padding="none" className="flex h-full flex-col overflow-hidden">
           <div className="border-b border-white/5 p-5">
             <SectionHeader label="Activity Log" count={activity.length} />
           </div>
@@ -63,7 +63,7 @@ export function Logs() {
               icon={ScrollText}
               title="No activity yet"
               hint="Agent actions appear here as workflows run."
-              className="py-16"
+              className="flex flex-1 items-center justify-center py-16"
             />
           ) : (
             <ScrollArea className="max-h-[34rem]">
@@ -79,8 +79,8 @@ export function Logs() {
         </GlassCard>
       </Reveal>
 
-      <Reveal delay={0.05}>
-        <GlassCard padding="none" className="overflow-hidden">
+      <Reveal delay={0.05} className="h-full">
+        <GlassCard padding="none" className="flex h-full flex-col overflow-hidden">
           <div className="border-b border-white/5 p-5">
             <SectionHeader label="Recent Memory" count={memoryItems.length} />
           </div>
@@ -89,7 +89,7 @@ export function Logs() {
               icon={Brain}
               title="No memory entries yet"
               hint="Each agent's output is stored as recall after a workflow run. Run one to populate this log."
-              className="py-16"
+              className="flex flex-1 items-center justify-center py-16"
             />
           ) : (
             <ScrollArea className="max-h-[34rem]">

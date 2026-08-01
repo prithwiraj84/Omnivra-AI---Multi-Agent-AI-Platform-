@@ -15,10 +15,10 @@ export interface TaskDistributionProps {
  */
 export function TaskDistribution({ data, total }: TaskDistributionProps) {
   return (
-    <GlassCard variant="panel">
+    <GlassCard variant="panel" className="flex h-full flex-col">
       <SectionHeader label="Task Distribution" />
       {data.length === 0 ? (
-        <p className="py-12 text-center text-xs text-zinc-500">No tasks yet — distribution by project appears here.</p>
+        <p className="flex flex-1 items-center justify-center px-4 py-12 text-center text-xs text-zinc-500">No tasks yet — distribution by project appears here.</p>
       ) : (
         <>
       <Reveal className="mt-4">

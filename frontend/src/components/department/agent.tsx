@@ -37,9 +37,9 @@ function DeptAgentCard({ agent, onOpen }: { agent: DeptAgent; onOpen: () => void
       onClick={onOpen}
       whileHover={reduce ? undefined : { scale: 1.02 }}
       transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-      className="focus-ring w-full text-left"
+      className="focus-ring h-full w-full text-left"
     >
-      <GlassCard interactive glow={agent.accent as Accent} padding="sm" className="flex flex-col gap-3">
+      <GlassCard interactive glow={agent.accent as Accent} padding="sm" className="flex h-full flex-col gap-3">
         <div className="flex items-center gap-3">
           <IconTile accent={agent.accent as Accent} size="sm" icon={Bot} />
           <div className="min-w-0 flex-1">
@@ -140,7 +140,7 @@ export function DeptAgentGrid({ agents }: { agents: DeptAgent[] }) {
           the dept main column already shares space with the side panel + right rail. */}
       <Stagger className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3')}>
         {agents.map((a) => (
-          <StaggerItem key={a.id}>
+          <StaggerItem key={a.id} className="h-full">
             <DeptAgentCard agent={a} onOpen={() => setSelected(a)} />
           </StaggerItem>
         ))}

@@ -117,7 +117,7 @@ const SOCIAL_META: Record<string, { meta: SocialConnectorMeta; icon: LucideIcon 
 function StatusCard({ tile }: { tile: StatusTile }) {
   const Icon = tile.icon
   return (
-    <GlassCard interactive glow={tile.configured ? tile.accent : undefined} padding="md" className="flex flex-col gap-4">
+    <GlassCard interactive glow={tile.configured ? tile.accent : undefined} padding="md" className="flex h-full flex-col gap-4">
       <div className="flex items-start gap-3">
         <IconTile accent={tile.accent} icon={Icon} />
         <div className="min-w-0 flex-1">
@@ -199,7 +199,7 @@ export function Integrations() {
         <SectionHeader label="LLM Providers" count={llm.length} />
         <Stagger className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {llm.map((meta) => (
-            <StaggerItem key={meta.id}>
+            <StaggerItem key={meta.id} className="h-full">
               <ProviderKeyCard meta={meta} status={byId.get(meta.id)} />
             </StaggerItem>
           ))}
@@ -210,7 +210,7 @@ export function Integrations() {
         <SectionHeader label="Media Providers" count={media.length} />
         <Stagger className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {media.map((meta) => (
-            <StaggerItem key={meta.id}>
+            <StaggerItem key={meta.id} className="h-full">
               <ProviderKeyCard meta={meta} status={byId.get(meta.id)} />
             </StaggerItem>
           ))}
@@ -230,7 +230,7 @@ export function Integrations() {
               const m = SOCIAL_META[c.id]
               if (!m) return null
               return (
-                <StaggerItem key={c.id}>
+                <StaggerItem key={c.id} className="h-full">
                   <SocialConnectorCard connector={c} meta={m.meta} icon={m.icon} />
                 </StaggerItem>
               )
@@ -243,7 +243,7 @@ export function Integrations() {
         <SectionHeader label="Platform Services" count={platformTiles.length} />
         <Stagger className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {platformTiles.map((tile) => (
-            <StaggerItem key={tile.key}>
+            <StaggerItem key={tile.key} className="h-full">
               <StatusCard tile={tile} />
             </StaggerItem>
           ))}

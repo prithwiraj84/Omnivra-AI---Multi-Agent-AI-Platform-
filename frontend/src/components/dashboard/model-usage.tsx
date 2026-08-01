@@ -16,8 +16,8 @@ export interface ModelUsageProps {
  */
 export function ModelUsage({ models, onViewAll }: ModelUsageProps) {
   return (
-    <Reveal>
-      <GlassCard className="space-y-4">
+    <Reveal className="h-full">
+      <GlassCard className="flex h-full flex-col space-y-4">
         <SectionHeader
           label="Top Models By Usage"
           action={
@@ -27,7 +27,7 @@ export function ModelUsage({ models, onViewAll }: ModelUsageProps) {
           }
         />
         {models.length === 0 ? (
-          <p className="py-8 text-center text-xs text-zinc-500">No model usage yet — appears as workflows run.</p>
+          <p className="flex flex-1 items-center justify-center px-4 py-8 text-center text-xs text-zinc-500">No model usage yet — appears as workflows run.</p>
         ) : (
           <BarMeter
             className="[&_li_span:first-child]:font-mono"

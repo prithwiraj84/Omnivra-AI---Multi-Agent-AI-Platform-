@@ -14,11 +14,11 @@ export interface ProviderUsageProps {
  */
 export function ProviderUsage({ providers }: ProviderUsageProps) {
   return (
-    <Reveal>
-      <GlassCard className="space-y-4">
+    <Reveal className="h-full">
+      <GlassCard className="flex h-full flex-col space-y-4">
         <SectionHeader label="Model Usage (By Provider)" />
         {providers.length === 0 ? (
-          <p className="py-8 text-center text-xs text-zinc-500">No LLM calls yet — usage appears as workflows run.</p>
+          <p className="flex flex-1 items-center justify-center px-4 py-8 text-center text-xs text-zinc-500">No LLM calls yet — usage appears as workflows run.</p>
         ) : (
           <BarMeter
             rows={providers.map((p) => ({

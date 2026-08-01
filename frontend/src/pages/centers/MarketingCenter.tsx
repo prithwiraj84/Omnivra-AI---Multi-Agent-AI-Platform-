@@ -134,7 +134,7 @@ export function MarketingCenter() {
       ) : (
         <Stagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {agents.map((agent) => (
-            <StaggerItem key={agent.id}>
+            <StaggerItem key={agent.id} className="h-full">
               <AgentCard agent={agent} />
             </StaggerItem>
           ))}
@@ -142,7 +142,7 @@ export function MarketingCenter() {
       )}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Reveal delay={0.05}>
+        <Reveal delay={0.05} className="h-full">
           <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="Campaigns" count={campaigns.length} />
             {campaigns.length === 0 ? (
@@ -150,7 +150,7 @@ export function MarketingCenter() {
                 icon={Megaphone}
                 title="No active campaigns"
                 hint="Marketing workflows appear here as the team launches them."
-                className="py-10"
+                className="flex flex-1 items-center justify-center py-10"
               />
             ) : (
               <Stagger className="flex flex-col gap-2.5">
@@ -164,7 +164,7 @@ export function MarketingCenter() {
           </GlassCard>
         </Reveal>
 
-        <Reveal delay={0.1}>
+        <Reveal delay={0.1} className="h-full">
           <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="Content Artifacts" count={reports.length} />
             {reports.length === 0 ? (
@@ -172,7 +172,7 @@ export function MarketingCenter() {
                 icon={FileText}
                 title="No content artifacts yet"
                 hint="Reports written to the workspace appear here. Run a marketing workflow to populate it."
-                className="py-10"
+                className="flex flex-1 items-center justify-center py-10"
               />
             ) : (
               <Stagger className="flex flex-col gap-2">

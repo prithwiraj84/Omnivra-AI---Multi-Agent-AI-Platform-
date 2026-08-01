@@ -40,7 +40,7 @@ export function DeptKpiStrip({ stats }: { stats: StatCardDTO[] }) {
   return (
     <Stagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
       {stats.map((s) => (
-        <StaggerItem key={s.label}>
+        <StaggerItem key={s.label} className="h-full">
           <StatCard {...s} icon={resolveIcon(s.icon)} accent={s.accent as Accent} />
         </StaggerItem>
       ))}
@@ -68,7 +68,7 @@ export function DeptTaskBoard({ tasks }: { tasks: DeptTask[] }) {
           {TASK_COLUMNS.map((col) => {
             const items = tasks.filter((t) => t.status === col.key)
             return (
-              <div key={col.key} className="flex flex-col gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
+              <div key={col.key} className="flex h-full flex-col gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
                 <div className="flex items-center justify-between">
                   <span className="section-label">{col.label}</span>
                   <NeonBadge tone={col.tone}>{items.length}</NeonBadge>
@@ -103,10 +103,10 @@ const WF_TONE: Record<string, BadgeTone> = {
 
 export function DeptWorkflows({ workflows }: { workflows: DeptWorkflow[] }) {
   return (
-    <GlassCard padding="md" className="flex flex-col gap-3">
+    <GlassCard padding="md" className="flex h-full flex-col gap-3">
       <SectionHeader label="Recent Workflows" count={workflows.length} />
       {workflows.length === 0 ? (
-        <p className="py-6 text-center text-xs text-[#71717a]">No workflow runs involving this department yet.</p>
+        <p className="flex flex-1 items-center justify-center py-6 text-center text-xs text-[#71717a]">No workflow runs involving this department yet.</p>
       ) : (
         <div className="flex flex-col gap-2">
           {workflows.map((w) => (
@@ -125,10 +125,10 @@ export function DeptWorkflows({ workflows }: { workflows: DeptWorkflow[] }) {
 // --- activity feed ----------------------------------------------------------
 export function DeptActivityFeed({ items }: { items: DeptActivity[] }) {
   return (
-    <GlassCard padding="md" className="flex flex-col gap-3">
+    <GlassCard padding="md" className="flex h-full flex-col gap-3">
       <SectionHeader label="Live Activity" count={items.length} />
       {items.length === 0 ? (
-        <p className="py-6 text-center text-xs text-[#71717a]">No recent activity.</p>
+        <p className="flex flex-1 items-center justify-center py-6 text-center text-xs text-[#71717a]">No recent activity.</p>
       ) : (
         <div className="flex flex-col gap-2.5">
           {items.map((a) => {

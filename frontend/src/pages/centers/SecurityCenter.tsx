@@ -96,7 +96,7 @@ export function SecurityCenter() {
       ) : (
         <Stagger className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
           {agents.map((agent) => (
-            <StaggerItem key={agent.id}>
+            <StaggerItem key={agent.id} className="h-full">
               <AgentCard agent={agent} />
             </StaggerItem>
           ))}
@@ -104,7 +104,7 @@ export function SecurityCenter() {
       )}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Reveal delay={0.05}>
+        <Reveal delay={0.05} className="h-full">
           <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="Security Posture" />
             <div className="flex flex-wrap items-center gap-3">
@@ -125,7 +125,7 @@ export function SecurityCenter() {
           </GlassCard>
         </Reveal>
 
-        <Reveal delay={0.1}>
+        <Reveal delay={0.1} className="h-full">
           <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="API Quotas" count={quotas.length} />
             {quotas.length === 0 ? (
@@ -133,7 +133,7 @@ export function SecurityCenter() {
                 icon={Gauge}
                 title="No quota data"
                 hint="Provider quota usage appears here once the dashboard reports it."
-                className="py-10"
+                className="flex flex-1 items-center justify-center py-10"
               />
             ) : (
               <Stagger className="flex flex-col gap-3.5">

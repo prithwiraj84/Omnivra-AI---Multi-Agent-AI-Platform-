@@ -34,7 +34,7 @@ export function AgentStatusGrid({ agents, systemOps, onViewAll }: AgentStatusGri
       />
       <Stagger className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
         {agents.map((agent) => (
-          <StaggerItem key={agent.id}>
+          <StaggerItem key={agent.id} className="h-full">
             <AgentCard agent={agent} />
           </StaggerItem>
         ))}

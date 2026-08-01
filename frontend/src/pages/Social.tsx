@@ -75,7 +75,7 @@ function DraftCard({
   // A generated post image to preview inline (stub mode writes a .txt placeholder -> skipped).
   const postImage = !isReel ? draft.artifacts.find((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)) : undefined
   return (
-    <GlassCard className="flex flex-col gap-3">
+    <GlassCard className="flex h-full flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <NeonBadge tone={isReel ? 'violet' : 'cyan'}>
@@ -421,7 +421,7 @@ export function Social() {
       ) : (
         <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {list.map((draft) => (
-            <StaggerItem key={draft.id}>
+            <StaggerItem key={draft.id} className="h-full">
               <DraftCard
                 draft={draft}
                 projectId={activeProjectId}

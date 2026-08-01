@@ -63,10 +63,11 @@ export function AgentCard({ agent }: AgentCardProps) {
 
   return (
     <motion.div
+      className="h-full"
       whileHover={reduce ? undefined : { scale: 1.02 }}
       transition={{ type: 'spring', stiffness: 320, damping: 26 }}
     >
-      <GlassCard interactive glow={agent.accent} padding="sm" className="flex flex-col gap-3">
+      <GlassCard interactive glow={agent.accent} padding="sm" className="flex h-full flex-col gap-3">
         <div className="flex items-center gap-3">
           <IconTile accent={agent.accent} size="sm" icon={Icon} />
           <div className="min-w-0 flex-1">

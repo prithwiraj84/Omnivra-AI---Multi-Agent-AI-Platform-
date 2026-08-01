@@ -54,15 +54,15 @@ export function Billing() {
       </Reveal>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Reveal delay={0.05}>
-          <GlassCard padding="md" className="flex flex-col gap-4">
+        <Reveal delay={0.05} className="h-full">
+          <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="Model Usage (By Provider)" count={providerRows.length} />
             {providerRows.length === 0 ? (
               <EmptyState
                 icon={Layers}
                 title="No usage yet"
                 hint="Provider call-share appears here once agents start running."
-                className="py-12"
+                className="flex flex-1 items-center justify-center py-12"
               />
             ) : (
               <BarMeter rows={providerRows} />
@@ -70,15 +70,15 @@ export function Billing() {
           </GlassCard>
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <GlassCard padding="md" className="flex flex-col gap-4">
+        <Reveal delay={0.1} className="h-full">
+          <GlassCard padding="md" className="flex h-full flex-col gap-4">
             <SectionHeader label="Top Models" count={modelRows.length} />
             {modelRows.length === 0 ? (
               <EmptyState
                 icon={Coins}
                 title="No model usage yet"
                 hint="The most-used models by call volume appear here after a few runs."
-                className="py-12"
+                className="flex flex-1 items-center justify-center py-12"
               />
             ) : (
               <BarMeter rows={modelRows} />

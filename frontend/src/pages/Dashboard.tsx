@@ -42,7 +42,7 @@ export function Dashboard() {
         <div className="lg:col-span-4">
           <WorkflowList workflows={data.workflows} />
         </div>
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5 [&>*]:h-full">
           <TaskExecutionChart data={data.taskExecution} series={data.taskExecutionSeries} />
         </div>
         <div className="lg:col-span-3">

@@ -28,7 +28,7 @@ function StoreTile({
   label: string
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
+    <div className="flex h-full items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3.5">
       <IconTile accent={accent} icon={icon} />
       <div className="min-w-0">
         <p className="tabular text-2xl font-semibold leading-tight text-[#e4e4e7]">

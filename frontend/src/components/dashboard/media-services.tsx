@@ -14,7 +14,7 @@ export interface MediaServicesProps {
  */
 export function MediaServices({ services }: MediaServicesProps) {
   return (
-    <GlassCard className="space-y-4">
+    <GlassCard className="h-full space-y-4">
       <SectionHeader label="Media Services" />
       {services.length === 0 ? (
         <p className="py-8 text-center text-xs text-zinc-500">No media generated yet — image / TTS / STT usage appears here.</p>

@@ -82,7 +82,7 @@ export function SocialConnectorCard({
   }
 
   return (
-    <GlassCard padding="md" glow={connector.configured ? meta.accent : undefined} className="flex flex-col gap-4">
+    <GlassCard padding="md" glow={connector.configured ? meta.accent : undefined} className="flex h-full flex-col gap-4">
       {/* header */}
       <div className="flex items-start gap-3">
         <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl border bg-omnivra-surface-2/80', ACCENT_TILE[meta.accent])}>
