@@ -4,8 +4,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, useMotionValueEvent, useScroll } from 'framer-motion'
-import { ArrowRight, Boxes } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 
+import { OmnivraMark } from '@/components/brand/omnivra-mark'
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth'
 import { cn } from '@/lib/utils'
 
@@ -36,8 +37,8 @@ export function LandingNav() {
     >
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
         <Link to="/" className="focus-ring group flex items-center gap-2.5 rounded-md">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-omnivra-cyan to-omnivra-purple shadow-neon-cyan">
-            <Boxes className="h-[18px] w-[18px] text-omnivra-bg-root" strokeWidth={2.4} aria-hidden />
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-omnivra-cyan via-omnivra-indigo to-omnivra-purple shadow-neon-cyan">
+            <OmnivraMark className="h-[18px] w-[18px] text-omnivra-bg-root" />
           </span>
           <span className="text-sm font-bold tracking-tight text-white">
             OMNIVRA<span className="text-omnivra-cyan">.</span>

@@ -8,6 +8,7 @@
 import { motion, type Variants } from 'framer-motion'
 import { Bot, Boxes, LayoutDashboard, Sparkles, Wand2 } from 'lucide-react'
 
+import { OmnivraMark } from '@/components/brand/omnivra-mark'
 import { cn } from '@/lib/utils'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -89,8 +90,8 @@ export function ProductMockup() {
           {/* sidebar */}
           <div className="hidden w-40 shrink-0 flex-col gap-2 border-r border-white/[0.05] p-3 sm:flex">
             <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-6 w-6 place-items-center rounded-md bg-gradient-to-br from-omnivra-cyan to-omnivra-purple">
-                <Boxes className="h-3.5 w-3.5 text-omnivra-bg-root" strokeWidth={2.5} aria-hidden />
+              <span className="grid h-6 w-6 place-items-center rounded-md bg-gradient-to-br from-omnivra-cyan via-omnivra-indigo to-omnivra-purple">
+                <OmnivraMark className="h-4 w-4 text-omnivra-bg-root" />
               </span>
               <span className="text-[11px] font-bold text-white">OMNIVRA</span>
             </div>

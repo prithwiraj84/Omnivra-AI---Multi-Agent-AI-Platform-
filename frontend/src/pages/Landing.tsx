@@ -45,6 +45,7 @@ import {
 } from 'lucide-react'
 
 import { GoogleMark } from '@/components/auth/oauth-buttons'
+import { OmnivraMark } from '@/components/brand/omnivra-mark'
 import { AgentsShowcase } from '@/components/landing/agents-showcase'
 import {
   FacebookMark,
@@ -669,8 +670,8 @@ export function Landing() {
           {/* brand */}
           <div className="col-span-2 flex flex-col gap-3 lg:col-span-2">
             <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-omnivra-cyan to-omnivra-purple">
-                <Boxes className="h-[18px] w-[18px] text-omnivra-bg-root" strokeWidth={2.4} aria-hidden />
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-omnivra-cyan via-omnivra-indigo to-omnivra-purple">
+                <OmnivraMark className="h-[18px] w-[18px] text-omnivra-bg-root" />
               </span>
               <span className="text-sm font-bold tracking-tight text-white">
                 OMNIVRA<span className="text-omnivra-cyan">.</span>
