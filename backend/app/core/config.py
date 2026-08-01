@@ -88,10 +88,21 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
-    # Set this (Supabase → Settings → API → JWT Secret) to turn on PER-USER isolation: the backend
-    # verifies each request's Supabase access token and scopes projects/dashboard/tasks to that user.
-    # Unset → single-admin open mode (everything owned by ADMIN_USERNAME), exactly as before.
+    # --- Per-user private workspaces ---
+    # Turn on PER-USER isolation (the backend verifies each request's Supabase access token and
+    # scopes projects/dashboard/tasks to that user). Enabled by EITHER of:
+    #   * PER_USER_WORKSPACES=true  — the explicit switch (use this with modern projects, whose
+    #     tokens are signed with asymmetric keys and have no shared secret to paste), or
+    #   * SUPABASE_JWT_SECRET set   — legacy HS256 projects.
+    # Both unset → single-admin open mode (everything owned by ADMIN_USERNAME), exactly as before.
+    #
+    # Token verification auto-detects the algorithm:
+    #   ES256/RS256 -> verified against the project's published JWKS (SUPABASE_URL must be set)
+    #   HS256       -> verified with SUPABASE_JWT_SECRET (Supabase → Settings → API → JWT Secret)
+    per_user_workspaces: bool = False
     supabase_jwt_secret: str | None = None
+    # Expected `aud` claim on Supabase user tokens. Only change if you've customized it.
+    supabase_jwt_audience: str = "authenticated"
     supabase_db_password: str | None = None
     supabase_db_url: str | None = None
     supabase_storage_bucket: str = "omnivra-artifacts"

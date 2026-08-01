@@ -10,12 +10,28 @@ Omnivra runs in one of two modes, decided by a single backend setting:
 ## Enabling per-user mode
 1. Frontend: require login — this is automatic whenever Supabase is configured (see `AuthGate`).
    Visiting the app without a session redirects to `/login`.
-2. Backend: set **`SUPABASE_JWT_SECRET`** (Supabase → Settings → API → **JWT Secret**) in
-   `backend/.env`. That flips the API into per-user mode.
+2. Backend: set **`PER_USER_WORKSPACES=true`**.
+3. Make sure the backend can **verify** your project's tokens — which depends on how your project
+   signs them. Check:
 
-Once set, the frontend sends each request the user's **Supabase access token**, and the backend
-**verifies it** (HS256, `aud=authenticated`) to get a trustworthy user id (`sub`). Requests
-without a valid token get `401`.
+   ```
+   https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+   ```
+
+   | JWKS response | Your project | What to set |
+   |---|---|---|
+   | A key with `"alg":"ES256"` / `"RS256"` | **Modern** (asymmetric signing keys) | Nothing extra — just a correct `SUPABASE_URL`. Leave `SUPABASE_JWT_SECRET` empty. |
+   | Empty / no keys | **Legacy** (HS256 shared secret) | `SUPABASE_JWT_SECRET` = Settings → API → **JWT Secret** |
+
+The backend reads each token's header and picks the right verification path automatically, so both
+styles work. (Setting `SUPABASE_JWT_SECRET` also switches per-user mode on, for backwards
+compatibility.) Requests without a valid token get `401`.
+
+> **If the app goes blank after enabling this**, the backend is rejecting your tokens. Check
+> `GET /api/dashboard` in the browser's Network tab: `Not authenticated` = no token reached the
+> server; `Invalid or expired session` = it couldn't be verified (usually a legacy secret set on a
+> modern project, or vice-versa); a `500` names the missing setting. The app now bounces you to
+> `/login` with a message instead of hanging on a blank screen.
 
 ## What "private" means here
 Scoped to the signed-in user (`sub`):

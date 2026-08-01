@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { ArrowLeft, Lock, LogIn, User } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { OAuthButtons } from '@/components/auth/oauth-buttons'
 import { Reveal } from '@/components/common/reveal'
@@ -29,6 +29,9 @@ export function Login() {
   const navigate = useNavigate()
   const loginMutation = useLogin()
   const { isAuthenticated } = useSupabaseAuth()
+  const [params] = useSearchParams()
+  // Set by the API client when the backend rejected our session (401), so the bounce isn't silent.
+  const expired = params.get('expired') === '1'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -78,6 +81,15 @@ export function Login() {
                 </p>
               </div>
             </div>
+
+            {expired && (
+              <p
+                role="alert"
+                className="rounded-lg border border-omnivra-amber/25 bg-omnivra-amber/[0.07] px-3 py-2 text-xs leading-relaxed text-omnivra-amber"
+              >
+                Your session was rejected by the server. Please sign in again.
+              </p>
+            )}
 
             {/* Primary: social OAuth via Supabase */}
             <OAuthButtons />

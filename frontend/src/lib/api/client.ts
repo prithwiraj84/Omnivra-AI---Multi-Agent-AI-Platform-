@@ -55,3 +55,34 @@ api.interceptors.request.use(async (config) => {
   config.headers.set('X-Project-Id', getActiveProjectId())
   return config
 })
+
+/**
+ * A 401 means the backend rejected our session outright — without this, every data query would
+ * just sit in its loading state and the app would render as a permanently blank shell with no
+ * explanation. Bounce to sign-in once so the failure is visible and recoverable.
+ *
+ * Guarded so concurrent 401s can't fire a redirect storm, and skipped when we're already on
+ * /login (no loop) or when Supabase isn't configured (open/self-host mode has no sign-in to
+ * return to). 5xx is deliberately NOT handled here — a server error is not a session problem.
+ */
+let redirectingToLogin = false
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const status = error?.response?.status
+    if (status === 401 && supabase && !redirectingToLogin && typeof window !== 'undefined') {
+      const onLogin = window.location.pathname.startsWith('/login')
+      if (!onLogin) {
+        redirectingToLogin = true
+        try {
+          await supabase.auth.signOut()
+        } catch {
+          /* the session is already unusable — redirect regardless */
+        }
+        window.location.assign('/login?expired=1')
+      }
+    }
+    return Promise.reject(error)
+  },
+)

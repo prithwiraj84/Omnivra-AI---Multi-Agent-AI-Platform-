@@ -6,10 +6,13 @@ else seed). ``current_user`` is the identity that OWNS a request's data (per-use
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import jwt
 from fastapi import Depends, Header, HTTPException, Query
 
 from app.core.config import get_settings
+from app.core.logging import logger
 from app.core.security import verify_token
 from app.db.repositories import DashboardRepository, get_repository
 from app.services.project_store import get_project_store
@@ -27,25 +30,78 @@ def _bearer(authorization: str | None) -> str | None:
     return None
 
 
+@lru_cache(maxsize=4)
+def _jwks_client(jwks_url: str) -> "jwt.PyJWKClient":
+    """Cached JWKS client (it caches the fetched keys itself, so this is one fetch per process)."""
+    return jwt.PyJWKClient(jwks_url, cache_keys=True)
+
+
+def _decode_supabase_jwt(token: str) -> dict:
+    """Verify a Supabase access token, auto-detecting how the project signs it.
+
+    Modern projects sign with ASYMMETRIC keys (ES256/RS256) published at
+    ``<SUPABASE_URL>/auth/v1/.well-known/jwks.json``; legacy projects sign with HS256 using the
+    shared "JWT Secret". We read the token header and verify accordingly, so either style works
+    without the operator having to know which one their project uses.
+    """
+    settings = get_settings()
+    try:
+        alg = str(jwt.get_unverified_header(token).get("alg", "")).upper()
+    except Exception as exc:  # noqa: BLE001 - malformed token
+        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
+
+    opts = {"audience": settings.supabase_jwt_audience}
+    if alg.startswith(("ES", "RS", "PS")):
+        base = (settings.supabase_url or "").rstrip("/")
+        if not base:
+            # Asymmetric token but nothing to verify it against — a config error, not a bad token.
+            logger.error("Per-user auth: token uses {} but SUPABASE_URL is unset (needed for JWKS).", alg)
+            raise HTTPException(
+                status_code=500,
+                detail="Server auth misconfigured: SUPABASE_URL is required to verify this project's tokens.",
+            )
+        try:
+            key = _jwks_client(f"{base}/auth/v1/.well-known/jwks.json").get_signing_key_from_jwt(token).key
+            return jwt.decode(token, key, algorithms=["ES256", "RS256", "PS256"], **opts)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
+
+    secret = settings.supabase_jwt_secret
+    if not secret:
+        logger.error("Per-user auth: token uses HS256 but SUPABASE_JWT_SECRET is unset.")
+        raise HTTPException(
+            status_code=500,
+            detail="Server auth misconfigured: SUPABASE_JWT_SECRET is required to verify this project's tokens.",
+        )
+    try:
+        return jwt.decode(token, secret, algorithms=["HS256"], **opts)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
+
+
+def per_user_mode() -> bool:
+    """True when requests are scoped to the signed-in Supabase user."""
+    s = get_settings()
+    return bool(s.per_user_workspaces or s.supabase_jwt_secret)
+
+
 def current_user(authorization: str | None = Header(default=None)) -> str:
     """The identity that owns this request's projects/workspace.
 
-    - PER-USER mode (SUPABASE_JWT_SECRET set): verify the request's Supabase access token
-      (HS256, aud=authenticated) and return its user id (`sub`). No/invalid token -> 401.
-    - Single-admin/open mode (secret unset): always the admin username, so every existing
-      test + local run behaves exactly as before (one owner, no auth required).
+    - PER-USER mode: verify the request's Supabase access token (ES256/RS256 via the project's
+      JWKS, or HS256 via the legacy secret) and return its user id (`sub`). No/invalid -> 401.
+    - Single-admin/open mode: always the admin username, so every existing test + local run
+      behaves exactly as before (one owner, no auth required).
     """
     settings = get_settings()
-    secret = settings.supabase_jwt_secret
-    if not secret:
+    if not per_user_mode():
         return settings.admin_username
     token = _bearer(authorization)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"], audience="authenticated")
-    except Exception as exc:  # noqa: BLE001 - any JWT error is an auth failure
-        raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
+    payload = _decode_supabase_jwt(token)
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid session (no subject)")

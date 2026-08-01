@@ -36,10 +36,12 @@ for _k in (
     os.environ[_k] = ""
 
 # Force the documented auth defaults so a customized backend/.env (real ADMIN_USERNAME /
-# ADMIN_PASSWORD / AUTH_ENABLED) can't break the hermetic auth tests — os.environ overrides .env.
+# ADMIN_PASSWORD / AUTH_ENABLED / PER_USER_WORKSPACES) can't break the hermetic auth tests —
+# os.environ overrides .env. Tests that need per-user mode opt in via a fixture.
 os.environ["AUTH_ENABLED"] = "false"
 os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "omnivra"
+os.environ["PER_USER_WORKSPACES"] = "false"
 
 # Force STUB reel rendering in tests so the suite is fast + deterministic even when
 # the optional MoviePy engine is installed locally (a real encode takes ~tens of sec).
