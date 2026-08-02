@@ -594,3 +594,30 @@ def test_pptx_has_entrance_animations(tmp_path, monkeypatch) -> None:
     prs = Presentation(str(out))
     animated = [s for s in prs.slides if s._element.find(qn("p:timing")) is not None]
     assert animated, "expected at least one slide with an entrance-animation <p:timing> tree"
+
+
+# --- failure diagnosis (cp-0072): tell the user the RIGHT next step -------------------------
+def test_fallback_distinguishes_missing_provider_from_exhausted_one():
+    """The two failures need OPPOSITE actions, so the placeholder must not guess.
+
+    Previously it always claimed a temporary rate limit and told users to "switch the document
+    model in Settings" — a setting that does not exist — which is useless when the real cause is
+    that no API key is connected.
+    """
+    from app.services.documents import DocumentService
+
+    # nothing connected -> tell them to add a key
+    _t, _s, sections = DocumentService._fallback("a full story", no_provider=True)
+    text = sections[0].body + " " + " ".join(sections[0].bullets)
+    assert "no AI provider is connected" in sections[0].body
+    assert "Integrations" in text
+    assert "rate-limited" not in text and "quota" not in text  # don't misdiagnose
+
+    # connected but gave nothing -> rate limit / quota advice
+    _t2, _s2, sections2 = DocumentService._fallback("a full story", no_provider=False)
+    text2 = sections2[0].body + " " + " ".join(sections2[0].bullets)
+    assert "rate-limited" in text2 or "quota" in text2
+
+    # neither may point at a setting that does not exist
+    for blob in (text, text2):
+        assert "document model in Settings" not in blob

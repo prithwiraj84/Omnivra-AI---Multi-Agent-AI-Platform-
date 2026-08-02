@@ -320,13 +320,24 @@ class DocumentService:
                 # Theme is USER-controlled and independent of the genre: an explicit palette wins;
                 # 'auto' falls back to the agent's topic-matched suggestion, else the default.
                 return title, subtitle, _resolve_theme(theme, suggested), sections, None
-        # The model produced nothing usable (no/expired key, rate limit, or unparseable output).
-        # Return an HONEST notice — never fabricate topic content that misleads the user.
-        title, subtitle, sections = self._fallback(prompt)
+        # The model produced nothing usable. DIAGNOSE why before telling the user anything: an
+        # unconfigured provider ("add a key") and an exhausted one ("try again later") need
+        # opposite actions, and guessing wrong sends them chasing the wrong fix.
+        content = str(out.get("content") or "")
+        try:
+            configured = any(get_provider_registry().status().values())
+        except Exception:  # noqa: BLE001 - diagnosis must never mask the original failure
+            configured = True
+        # An unconfigured provider answers with the offline stub rather than an error.
+        no_provider = not configured or content.lstrip().startswith("[stub ")
+
+        title, subtitle, sections = self._fallback(prompt, no_provider=no_provider)
         note = (
-            "The documentation AI did not return content, so this is a placeholder notice — not generated "
-            "documentation. The model is likely rate-limited or its free daily quota is exhausted; try again "
-            "later or switch the document model in Settings."
+            "No AI provider is connected, so this is a placeholder notice — not generated documentation. "
+            "Add an API key in Integrations, then regenerate."
+            if no_provider
+            else "The documentation model returned no usable content, so this is a placeholder notice — not "
+            "generated documentation. It is most likely rate-limited or out of free quota; try again shortly."
         )
         return title, subtitle, _resolve_theme(theme), sections, note
 
@@ -493,29 +504,42 @@ class DocumentService:
         return DocChart(type=ctype, title=str(raw.get("title", "")).strip(), categories=categories, series=series)
 
     @staticmethod
-    def _fallback(prompt: str) -> tuple[str, str, list[DocSection]]:
-        """HONEST placeholder used ONLY when the documentation model returns nothing usable (no key /
-        rate-limited / unparseable). It does NOT fabricate topic content (which would be irrelevant to
-        the request) and adds NO table — it plainly says the content could not be generated and why,
-        titled by the user's request so the draft stays on-topic."""
+    def _fallback(prompt: str, *, no_provider: bool = False) -> tuple[str, str, list[DocSection]]:
+        """HONEST placeholder used ONLY when the documentation model returns nothing usable.
+
+        It does NOT fabricate topic content (which would be irrelevant to the request) and adds NO
+        table — it plainly says the content could not be generated and, crucially, WHY, so the next
+        step is the right one. `no_provider` distinguishes "nothing is connected" (add a key) from
+        "the model gave us nothing" (rate limit / quota), which need opposite actions.
+        """
         topic = (prompt.strip()[:120] or "your request")
         title = prompt.strip()[:80] or "Document"
-        sections = [
-            DocSection(
-                heading="Content could not be generated",
-                body=(
-                    f'Omnivra could not generate the document for "{topic}" because the documentation AI model '
-                    "did not return any content. This is a temporary provider issue rather than a problem with "
-                    "your request, and no topic content was written for this draft."
-                ),
-                bullets=[
-                    "Most often the configured model is rate-limited or its free daily quota is exhausted",
-                    "Try again in a few minutes, or switch the document model in Settings to an available provider",
-                    "Your prompt and chosen format were saved, so regenerating will reuse them",
-                ],
-            ),
-        ]
-        return title, "Draft could not be completed", sections
+
+        if no_provider:
+            body = (
+                f'Omnivra could not generate the document for "{topic}" because no AI provider is '
+                "connected to your account, so the documentation agent had no model to write with. "
+                "Nothing is wrong with your request — no topic content was written for this draft."
+            )
+            bullets = [
+                "Open Integrations and add an API key — OpenRouter, Groq or Google AI Studio all work",
+                "API keys are per user, so each signed-in account configures its own",
+                "Your prompt and chosen format were saved, so regenerating will reuse them",
+            ]
+        else:
+            body = (
+                f'Omnivra could not generate the document for "{topic}" because the documentation model '
+                "returned no usable content. This is a provider-side issue rather than a problem with "
+                "your request, and no topic content was written for this draft."
+            )
+            bullets = [
+                "The model is most likely rate-limited or out of free daily quota",
+                "Try again in a few minutes — Omnivra automatically retries on any other connected provider",
+                "Adding a second provider key in Integrations gives it somewhere to fail over to",
+                "Your prompt and chosen format were saved, so regenerating will reuse them",
+            ]
+
+        return title, "Draft could not be completed", [DocSection(heading="Content could not be generated", body=body, bullets=bullets)]
 
     @staticmethod
     def _markdown(title: str, subtitle: str, sections: list[DocSection]) -> str:
