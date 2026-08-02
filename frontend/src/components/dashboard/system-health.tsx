@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ProgressBar } from '@/components/ui/progress-bar'
@@ -14,6 +15,7 @@ export interface SystemHealthProps {
  * ProgressBar beneath the label; the non-numeric Network metric shows a success badge.
  */
 export function SystemHealth({ metrics }: SystemHealthProps) {
+  const navigate = useNavigate()
   return (
     <GlassCard padding="md">
       <SectionHeader
@@ -21,6 +23,7 @@ export function SystemHealth({ metrics }: SystemHealthProps) {
         action={
           <button
             type="button"
+            onClick={() => navigate("/settings")}
             className="text-xs font-medium text-omnivra-cyan transition-colors hover:brightness-110"
           >
             View All

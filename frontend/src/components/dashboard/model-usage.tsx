@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import type { ModelUsageItem } from '@/types'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
@@ -15,13 +16,14 @@ export interface ModelUsageProps {
  * (rendered in mono + truncated by BarMeter), with a "View All" action.
  */
 export function ModelUsage({ models, onViewAll }: ModelUsageProps) {
+  const navigate = useNavigate()
   return (
     <Reveal className="h-full">
       <GlassCard className="flex h-full flex-col space-y-4">
         <SectionHeader
           label="Top Models By Usage"
           action={
-            <Button variant="ghost" size="sm" onClick={onViewAll}>
+            <Button variant="ghost" size="sm" onClick={onViewAll ?? (() => navigate('/billing'))}>
               View All
             </Button>
           }

@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { AgentCard } from '@/components/dashboard/agent-card'
@@ -17,6 +18,7 @@ export interface AgentStatusGridProps {
  * sub-panel. Presentational; the assembler supplies `agents`/`systemOps`.
  */
 export function AgentStatusGrid({ agents, systemOps, onViewAll }: AgentStatusGridProps) {
+  const navigate = useNavigate()
   return (
     <GlassCard padding="md">
       <SectionHeader
@@ -25,7 +27,7 @@ export function AgentStatusGrid({ agents, systemOps, onViewAll }: AgentStatusGri
         action={
           <button
             type="button"
-            onClick={onViewAll}
+            onClick={onViewAll ?? (() => navigate('/agents'))}
             className="text-xs font-medium text-omnivra-cyan transition-colors hover:text-omnivra-cyan/80"
           >
             View All Agents

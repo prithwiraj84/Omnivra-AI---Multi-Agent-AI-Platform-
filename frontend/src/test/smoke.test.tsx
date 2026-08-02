@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from '@/App'
 import { AppProviders } from '@/providers/AppProviders'
@@ -193,5 +193,23 @@ describe('App shell', () => {
   ])('mounts %s without crashing', (route) => {
     renderApp(route)
     expect(screen.getByPlaceholderText(/Search anything/i)).toBeTruthy()
+  })
+
+  // These "View All" actions were silently inert: three had no onClick at all, and three took an
+  // `onViewAll` prop the Dashboard never passed. Clicking must leave the dashboard.
+  it.each([
+    ['View All Agents'],
+    ['View All'],
+  ])('navigates away from the dashboard when %s is clicked', (label) => {
+    renderApp('/dashboard')
+    const greeting = /Good (morning|afternoon|evening), Omnivra/i
+    expect(screen.getByText(greeting)).toBeTruthy()
+
+    const buttons = screen.getAllByRole('button', { name: new RegExp(`^${label}$`, 'i') })
+    expect(buttons.length).toBeGreaterThan(0)
+    fireEvent.click(buttons[0])
+
+    // Left the dashboard -> its greeting is gone (proves the button is wired to a route).
+    expect(screen.queryByText(greeting)).toBeNull()
   })
 })

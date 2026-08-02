@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -16,6 +17,7 @@ export interface ActivityFeedProps {
  * and a faint relative timestamp. A pulsing emerald dot by the header signals "live".
  */
 export function ActivityFeed({ items }: ActivityFeedProps) {
+  const navigate = useNavigate()
   return (
     <GlassCard padding="md">
       <SectionHeader
@@ -28,6 +30,7 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             </span>
             <button
               type="button"
+              onClick={() => navigate("/logs")}
               className="text-xs font-medium text-omnivra-cyan transition-colors hover:brightness-110"
             >
               View All

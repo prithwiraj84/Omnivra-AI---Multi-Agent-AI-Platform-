@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
@@ -32,6 +33,7 @@ function runToApprovalItem(run: RunResult): ApprovalItem {
  * Offline (tests), the live query yields no data → the card looks exactly as before.
  */
 export function PendingApprovals({ items, total, onReview }: PendingApprovalsProps) {
+  const navigate = useNavigate()
   const { data: awaiting } = useAwaitingApprovals()
   const decision = useApprovalDecision()
 
@@ -45,6 +47,7 @@ export function PendingApprovals({ items, total, onReview }: PendingApprovalsPro
         action={
           <button
             type="button"
+            onClick={() => navigate("/approvals")}
             className="text-xs font-medium text-omnivra-cyan transition-colors hover:brightness-110"
           >
             View All

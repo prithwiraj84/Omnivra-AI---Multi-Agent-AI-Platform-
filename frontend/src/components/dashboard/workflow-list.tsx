@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { GlassCard } from '@/components/ui/glass-card'
 import { SectionHeader } from '@/components/ui/section-header'
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,13 @@ export interface WorkflowListProps {
  * ("View All" action) above a divided vertical list of WorkflowRow items.
  */
 export function WorkflowList({ workflows, onViewAll }: WorkflowListProps) {
+  const navigate = useNavigate()
   return (
     <GlassCard className="flex h-full flex-col">
       <SectionHeader
         label="Active Workflows"
         action={
-          <Button variant="ghost" size="sm" className="px-2 text-omnivra-cyan" onClick={onViewAll}>
+          <Button variant="ghost" size="sm" className="px-2 text-omnivra-cyan" onClick={onViewAll ?? (() => navigate('/workflows'))}>
             View All
           </Button>
         }
