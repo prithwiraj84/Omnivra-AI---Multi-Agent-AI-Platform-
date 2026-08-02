@@ -621,3 +621,48 @@ def test_fallback_distinguishes_missing_provider_from_exhausted_one():
     # neither may point at a setting that does not exist
     for blob in (text, text2):
         assert "document model in Settings" not in blob
+
+
+# --- prose salvage (cp-0073): don't throw away a good answer that wasn't JSON ------------------
+def test_prose_answer_is_salvaged_into_sections():
+    """Small/free models often ignore "reply with JSON" and just write the document in markdown.
+    The strict parser finds no '{' and returns None, which previously discarded the whole answer
+    and showed a "could not generate" placeholder. We must recover it instead."""
+    from app.services.documents import DocumentService
+
+    md = """# How to Use AI in 2026
+
+## Getting Started
+AI tooling in 2026 is dominated by multi-agent systems that plan and delegate.
+Start by picking one workflow you repeat weekly.
+
+- Choose a single, well-scoped task
+- Measure the before/after time cost
+1. Connect a provider key
+2. Run a small pilot
+
+## Choosing Models
+Frontier models handle reasoning; small models handle routing and classification.
+Cost scales with context, so trim aggressively.
+
+- Route cheap work to small models
+"""
+    assert DocumentService._parse(md) is None, "strict JSON parse should not match prose"
+
+    parsed = DocumentService._parse_prose(md, "how to use ai in 2026")
+    assert parsed is not None, "prose answer must be salvaged, not discarded"
+    title, _subtitle, _theme, sections = parsed
+    assert title == "How to Use AI in 2026"                     # first heading becomes the title
+    assert [s.heading for s in sections] == ["Getting Started", "Choosing Models"]
+    assert "multi-agent systems" in sections[0].body            # prose kept
+    assert "Choose a single, well-scoped task" in sections[0].bullets
+    assert "Connect a provider key" in sections[0].bullets      # numbered lists too
+    assert len(sections[1].bullets) == 1
+
+
+def test_prose_salvage_ignores_trivial_output():
+    """A stub/one-liner is NOT a document — the honest placeholder must still win there."""
+    from app.services.documents import DocumentService
+
+    assert DocumentService._parse_prose("[stub · openrouter:gemma] hi", "x") is None
+    assert DocumentService._parse_prose("Sorry, I cannot help with that.", "x") is None

@@ -313,8 +313,11 @@ class DocumentService:
         # a truncated response is still recovered section-by-section by _parse.
         budget = 4096 if fmt == "pptx" else 7000
         out = await run_agent("documentation-agent", ask, registry=get_provider_registry(), max_tokens=budget)
+        content_raw = str(out.get("content") or "")
         if out.get("ok"):
-            parsed = self._parse(out.get("content", ""))
+            # Strict JSON first; if the model wrote markdown/prose instead, salvage THAT rather
+            # than discarding a complete answer and showing a "could not generate" placeholder.
+            parsed = self._parse(content_raw) or self._parse_prose(content_raw, prompt)
             if parsed:
                 title, subtitle, suggested, sections = parsed
                 # Theme is USER-controlled and independent of the genre: an explicit palette wins;
@@ -323,7 +326,7 @@ class DocumentService:
         # The model produced nothing usable. DIAGNOSE why before telling the user anything: an
         # unconfigured provider ("add a key") and an exhausted one ("try again later") need
         # opposite actions, and guessing wrong sends them chasing the wrong fix.
-        content = str(out.get("content") or "")
+        content = content_raw
         try:
             configured = any(get_provider_registry().status().values())
         except Exception:  # noqa: BLE001 - diagnosis must never mask the original failure
@@ -380,6 +383,61 @@ class DocumentService:
         if not prompt:
             return None
         return DocImage(prompt=prompt[:600], alt=str(raw.get("alt", "")).strip()[:200], path=None)
+
+    @staticmethod
+    def _parse_prose(text: str, prompt: str) -> tuple[str, str, str, list[DocSection]] | None:
+        """Salvage a document from a model that answered in MARKDOWN/PROSE instead of JSON.
+
+        Small/free models frequently ignore a "reply with JSON" instruction on a creative brief and
+        just write the document. The strict parser finds no ``{`` and returns None, which threw the
+        entire (often perfectly good) answer away and showed a "could not generate" placeholder.
+        Reading its headings and bullets turns that total loss into a usable draft.
+        """
+        clean = re.sub(r"```[a-zA-Z]*\n?|```", "", text or "").strip()
+        if len(clean) < 200:  # too little to be a document — let the honest placeholder win
+            return None
+
+        heading_re = re.compile(r"^\s{0,3}(?:#{1,6}\s+(?P<h>.+?)\s*#*|\*\*(?P<b>[^*]{3,80})\*\*)\s*$")
+        bullet_re = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?P<t>.+)$")
+
+        sections: list[DocSection] = []
+        doc_title = ""
+        heading, body, bullets = "", [], []
+
+        def flush() -> None:
+            nonlocal heading, body, bullets
+            text_body = " ".join(b.strip() for b in body if b.strip()).strip()
+            if heading and (text_body or bullets):
+                sections.append(DocSection(heading=heading[:160], body=text_body, bullets=bullets[:12]))
+            heading, body, bullets = "", [], []
+
+        for raw in clean.splitlines():
+            m = heading_re.match(raw)
+            if m:
+                found = (m.group("h") or m.group("b") or "").strip()
+                # The very first heading is the document title, not a section.
+                if not doc_title and not sections and not body and not bullets:
+                    doc_title = found
+                    continue
+                flush()
+                heading = found
+                continue
+            mb = bullet_re.match(raw)
+            if mb:
+                if not heading:
+                    heading = "Overview"
+                bullets.append(mb.group("t").strip())
+                continue
+            if raw.strip():
+                if not heading:
+                    heading = "Overview"
+                body.append(raw)
+        flush()
+
+        if not sections:
+            return None
+        title = (doc_title or prompt.strip()[:80] or "Document").strip()
+        return title, "", "", sections
 
     @staticmethod
     def _loads_document(text: str) -> dict | None:
