@@ -82,6 +82,24 @@ def _decode_supabase_jwt(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid or expired session") from exc
 
 
+def owner_from_authorization(authorization: str | None) -> str | None:
+    """Best-effort: the Supabase user id in this Authorization header, or None.
+
+    Never raises and never 401s — it exists so MIDDLEWARE can publish the key owner for the
+    whole request. Enforcement stays in `current_user`.
+    """
+    if not per_user_mode():
+        return None
+    token = _bearer(authorization)
+    if not token:
+        return None
+    try:
+        sub = _decode_supabase_jwt(token).get("sub")
+    except Exception:  # noqa: BLE001 - invalid token -> no owner; the dependency will 401
+        return None
+    return str(sub) if sub else None
+
+
 def per_user_mode() -> bool:
     """True when requests are scoped to the signed-in Supabase user."""
     s = get_settings()

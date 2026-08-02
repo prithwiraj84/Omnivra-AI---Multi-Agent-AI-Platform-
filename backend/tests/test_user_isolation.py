@@ -152,3 +152,25 @@ def test_foreign_project_id_rejected(client, multiuser):
         assert r.status_code == 404
     finally:
         client.delete(f"/api/projects/{pid}", headers=_auth(a))
+
+
+def test_user_provider_keys_reach_the_request(client, multiuser):
+    """REGRESSION: a signed-in user's OWN provider keys must be what the server resolves.
+
+    The key owner is published by middleware; setting it in the sync `current_user` dependency
+    silently lost it (FastAPI runs sync deps in a threadpool with a COPIED context), so every
+    user's keys resolved as the admin's -> "Set GROQ_API_KEY..." even with a key saved.
+    """
+    from app.services.secrets_store import get_secrets_store
+
+    store = get_secrets_store()
+    store.set("key-user", "groq", "gsk-this-users-key")
+    try:
+        r = client.get("/api/system/providers", headers=_auth(_token("key-user")))
+        assert r.status_code == 200, r.text
+        assert r.json()["groq"] is True, f"owner context lost -> {r.json()}"
+        # a different user must NOT inherit it
+        r2 = client.get("/api/system/providers", headers=_auth(_token("other-user")))
+        assert r2.json()["groq"] is False
+    finally:
+        store.clear("key-user", "groq")

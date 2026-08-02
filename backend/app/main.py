@@ -102,6 +102,27 @@ _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 
 
 @app.middleware("http")
+async def key_owner_middleware(request: Request, call_next):
+    """Publish the signed-in user as the provider-key owner for this whole request.
+
+    This MUST be middleware, not a dependency: FastAPI runs sync dependencies in a threadpool
+    with a COPIED context, so a ContextVar set inside one is discarded before the endpoint runs
+    (which silently resolved every user's provider keys as the admin's). Middleware runs in the
+    request's own context, so the value reaches dependencies, the endpoint, and background tasks.
+
+    Best-effort by design — it never rejects. Authentication is still enforced by `current_user`.
+    """
+    from app.api.deps import owner_from_authorization
+    from app.services.provider_keys import set_key_owner
+
+    try:
+        set_key_owner(owner_from_authorization(request.headers.get("authorization")))
+    except Exception:  # noqa: BLE001 - never let key-owner resolution break a request
+        set_key_owner(None)
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def hardening_middleware(request: Request, call_next):
     """Opt-in per-IP rate limiting + always-on security response headers."""
     if settings.rate_limit_enabled:
