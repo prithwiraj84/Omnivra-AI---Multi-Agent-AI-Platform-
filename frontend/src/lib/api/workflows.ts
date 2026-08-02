@@ -2,7 +2,7 @@
  * Workflow + approval-gate API calls (Phase 7). Uses the shared `@/lib/api/client`
  * axios instance (baseURL '/api'). All responses are the camelCase RunResult wire shape.
  */
-import { api } from '@/lib/api/client'
+import { api, LONG_TIMEOUT } from '@/lib/api/client'
 import { resolveIcon } from '@/lib/api/icons'
 import type { RunResult, WorkflowDTO } from '@/lib/api/types'
 import type { WorkflowItem } from '@/types'
@@ -16,7 +16,7 @@ export type ApprovalAction = 'approve' | 'reject' | 'retry' | 'rollback'
  * returned RunResult has status 'awaiting_approval' and a non-null `pendingApproval`.
  */
 export async function runWorkflow(task: string): Promise<RunResult> {
-  const { data } = await api.post<RunResult>('/workflows/run', { task })
+  const { data } = await api.post<RunResult>('/workflows/run', { task }, { timeout: LONG_TIMEOUT })
   return data
 }
 
@@ -64,6 +64,6 @@ export async function decideApproval(
   action: ApprovalAction,
   note?: string,
 ): Promise<RunResult> {
-  const { data } = await api.post<RunResult>(`/approvals/${approvalId}/decision`, { action, note })
+  const { data } = await api.post<RunResult>(`/approvals/${approvalId}/decision`, { action, note }, { timeout: LONG_TIMEOUT })
   return data
 }

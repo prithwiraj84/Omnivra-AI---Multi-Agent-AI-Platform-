@@ -3,13 +3,13 @@
  * instance (baseURL '/api'); the active project rides on the X-Project-Id header
  * set by the interceptor, so these are implicitly project-scoped.
  */
-import { api, apiUrl } from '@/lib/api/client'
+import { api, apiUrl, LONG_TIMEOUT } from '@/lib/api/client'
 import type { DocumentDecision, DocumentDraft, DocumentRequest } from '@/lib/api/types'
 import { withMediaToken } from '@/lib/api/media-token'
 
 /** Generate a document from a prompt in the chosen format. POST /documents/generate. */
 export async function generateDocument(body: DocumentRequest): Promise<DocumentDraft> {
-  const { data } = await api.post<DocumentDraft>('/documents/generate', body)
+  const { data } = await api.post<DocumentDraft>('/documents/generate', body, { timeout: LONG_TIMEOUT })
   return data
 }
 

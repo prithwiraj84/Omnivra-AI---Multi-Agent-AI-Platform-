@@ -3,19 +3,19 @@
  * axios instance (baseURL '/api'); the active project rides on the X-Project-Id
  * header set by the interceptor, so these are implicitly project-scoped.
  */
-import { api, apiUrl } from '@/lib/api/client'
+import { api, apiUrl, LONG_TIMEOUT } from '@/lib/api/client'
 import type { PostRequest, ReelRequest, SocialDecision, SocialDraft } from '@/lib/api/types'
 import { withMediaToken } from '@/lib/api/media-token'
 
 /** Draft a short-form reel (storyboard + stub voiceover). POST /social/reel. */
 export async function draftReel(body: ReelRequest): Promise<SocialDraft> {
-  const { data } = await api.post<SocialDraft>('/social/reel', body)
+  const { data } = await api.post<SocialDraft>('/social/reel', body, { timeout: LONG_TIMEOUT })
   return data
 }
 
 /** Draft an image post (FLUX image + caption + tags). POST /social/post. */
 export async function draftPost(body: PostRequest): Promise<SocialDraft> {
-  const { data } = await api.post<SocialDraft>('/social/post', body)
+  const { data } = await api.post<SocialDraft>('/social/post', body, { timeout: LONG_TIMEOUT })
   return data
 }
 
@@ -33,7 +33,7 @@ export async function decideDraft(id: string, body: SocialDecision): Promise<Soc
 
 /** Kick off an async render of a reel draft into an .mp4. POST /social/drafts/{id}/render. */
 export async function renderDraft(id: string): Promise<SocialDraft> {
-  const { data } = await api.post<SocialDraft>(`/social/drafts/${id}/render`, {})
+  const { data } = await api.post<SocialDraft>(`/social/drafts/${id}/render`, {}, { timeout: LONG_TIMEOUT })
   return data
 }
 

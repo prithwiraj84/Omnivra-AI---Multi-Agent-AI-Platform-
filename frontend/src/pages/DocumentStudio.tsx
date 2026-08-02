@@ -28,6 +28,7 @@ import { useDecideDocument, useDocuments, useGenerateDocument } from '@/hooks/us
 import { documentUrl } from '@/lib/api/documents'
 import { useProjectStore } from '@/store/project'
 import type { DocFont, DocFormat, DocStyle, DocTable, DocTheme, DocumentDraft } from '@/lib/api/types'
+import { apiErrorMessage } from '@/lib/api/errors'
 
 const FORMATS: { value: DocFormat; label: string; icon: typeof FileText }[] = [
   { value: 'pptx', label: 'Presentation', icon: Presentation },
@@ -494,7 +495,7 @@ export function DocumentStudio() {
 
             {generate.isError && (
               <p className="text-xs text-omnivra-pink" role="status" aria-live="polite">
-                Could not generate the document. Is the backend running?
+                {apiErrorMessage(generate.error, 'generate the document')}
               </p>
             )}
           </form>

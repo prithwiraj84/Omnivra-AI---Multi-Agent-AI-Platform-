@@ -19,9 +19,20 @@ export const API_BASE_URL = backendOrigin ? `${backendOrigin}/api` : '/api'
 /** Build an absolute backend URL for an /api path used OUTSIDE axios (<a href>, <img src>). */
 export const apiUrl = (path: string): string => `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
 
+/**
+ * Timeout for GENERATIVE calls. An LLM writing a full document/storyboard routinely runs 30–120s,
+ * far past the snappy default below — which aborted the request client-side and surfaced as
+ * "Is the backend running?" while the server was still happily working. Pass this explicitly on
+ * any endpoint whose work is a model call.
+ */
+export const LONG_TIMEOUT = 180_000
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10_000,
+  // Default for ordinary reads/writes. Generous enough to survive a hosted backend COLD START
+  // (Hugging Face Spaces sleep when idle and can take ~30s to wake) — the old 10s aborted during
+  // wake-up and looked like an outage. Generative endpoints override with LONG_TIMEOUT.
+  timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 })
 

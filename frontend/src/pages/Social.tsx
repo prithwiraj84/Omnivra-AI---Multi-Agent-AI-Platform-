@@ -26,6 +26,7 @@ import { mediaUrl } from '@/lib/api/social'
 import { useProjectStore } from '@/store/project'
 import { useSocialProgressStore, type JobProgress } from '@/store/social-progress'
 import type { SocialDraft, SocialKind } from '@/lib/api/types'
+import { apiErrorMessage } from '@/lib/api/errors'
 
 const REEL_TARGETS = ['youtube', 'instagram']
 const POST_TARGETS = ['facebook', 'linkedin', 'twitter']
@@ -400,7 +401,7 @@ export function Social() {
 
             {failed && (
               <p className="text-xs text-omnivra-pink" role="status" aria-live="polite">
-                Could not generate the draft. Is the backend running?
+                {apiErrorMessage(draftReel.error ?? draftPost.error, 'generate the draft')}
               </p>
             )}
           </form>
