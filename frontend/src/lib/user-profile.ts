@@ -33,6 +33,24 @@ export function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
+/** The account's GIVEN name — the first word of the display name ("Prithwiraj Das" → "Prithwiraj"). */
+export function firstName(user: User | null | undefined): string | null {
+  if (!user) return null
+  const given = (user.user_metadata as Record<string, unknown> | undefined)?.given_name
+  if (typeof given === 'string' && given.trim()) return given.trim()
+  const full = displayName(user).trim()
+  if (!full || full === 'Guest') return null
+  return full.split(/\s+/)[0]
+}
+
+/** Time-of-day greeting for `date` in the viewer's local timezone. */
+export function greetingFor(date: Date = new Date()): string {
+  const h = date.getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 /** The OAuth provider that signed the user in ('google' | 'github' | 'email' | …). */
 export function providerOf(user: User | null | undefined): string {
   if (!user) return 'email'

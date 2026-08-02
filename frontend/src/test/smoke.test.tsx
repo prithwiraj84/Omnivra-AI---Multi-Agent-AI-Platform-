@@ -32,7 +32,7 @@ describe('App shell', () => {
 
   it('renders the dashboard greeting on /dashboard', () => {
     renderApp('/dashboard')
-    expect(screen.getByText(/Good morning, Omnivra/i)).toBeTruthy()
+    expect(screen.getByText(/Good (morning|afternoon|evening), Omnivra/i)).toBeTruthy()
   })
 
   it('renders a placeholder for an unbuilt route', () => {
@@ -70,7 +70,7 @@ describe('App shell', () => {
   it('lets the auth gate render children in open mode (no redirect to /login)', () => {
     // The default (open) mode must not bounce to /login: the dashboard greeting renders.
     renderApp('/dashboard')
-    expect(screen.getByText(/Good morning, Omnivra/i)).toBeTruthy()
+    expect(screen.getByText(/Good (morning|afternoon|evening), Omnivra/i)).toBeTruthy()
   })
 
   it('renders the live indicator reflecting the realtime channel state', () => {

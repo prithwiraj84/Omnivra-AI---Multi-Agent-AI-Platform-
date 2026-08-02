@@ -11,6 +11,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { NotificationBell } from '@/components/layout/notification-bell'
 import { IconButton } from '@/components/ui/icon-button'
 import { KbdHint } from '@/components/ui/kbd-hint'
 import { useSupabaseAuth } from '@/hooks/useSupabaseAuth'
@@ -18,11 +19,9 @@ import { avatarUrl, displayName, initials } from '@/lib/user-profile'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 import { useUIStore } from '@/store/ui'
-import { Bell, LogOut, Menu, Search, Settings, User } from 'lucide-react'
+import { LogOut, Menu, Search, Settings, User } from 'lucide-react'
 
 export interface TopbarProps extends React.HTMLAttributes<HTMLElement> {
-  /** Notification count rendered on the bell badge. */
-  notifications?: number
   /** Optional handler for the search input. */
   onSearch?: (value: string) => void
 }
@@ -33,7 +32,7 @@ export interface TopbarProps extends React.HTMLAttributes<HTMLElement> {
  * (with count badge), settings, and an avatar dropdown (Profile / Settings /
  * Sign out) labelled "Omnivra / Super Admin".
  */
-export function Topbar({ notifications = 12, onSearch, className, ...props }: TopbarProps) {
+export function Topbar({ onSearch, className, ...props }: TopbarProps) {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar)
   const navigate = useNavigate()
   const { user, isAuthenticated, signOut } = useSupabaseAuth()
@@ -83,7 +82,7 @@ export function Topbar({ notifications = 12, onSearch, className, ...props }: To
       {/* Right cluster */}
       <div className="ml-auto flex items-center gap-1.5">
         <LiveIndicator className="mr-1.5" />
-        <IconButton icon={Bell} aria-label="Notifications" badge={notifications} />
+        <NotificationBell />
         <IconButton icon={Settings} aria-label="Settings" onClick={() => navigate('/settings')} />
 
         <DropdownMenu>
