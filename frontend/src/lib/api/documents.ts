@@ -5,6 +5,7 @@
  */
 import { api, apiUrl } from '@/lib/api/client'
 import type { DocumentDecision, DocumentDraft, DocumentRequest } from '@/lib/api/types'
+import { withMediaToken } from '@/lib/api/media-token'
 
 /** Generate a document from a prompt in the chosen format. POST /documents/generate. */
 export async function generateDocument(body: DocumentRequest): Promise<DocumentDraft> {
@@ -31,5 +32,5 @@ export async function decideDocument(id: string, body: DocumentDecision): Promis
  */
 export function documentUrl(path: string, projectId: string): string {
   const clean = path.split('/').map(encodeURIComponent).join('/')
-  return apiUrl(`/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`)
+  return withMediaToken(apiUrl(`/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`))
 }

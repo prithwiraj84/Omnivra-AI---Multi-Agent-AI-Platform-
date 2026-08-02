@@ -131,6 +131,56 @@ def current_user(authorization: str | None = Header(default=None)) -> str:
     return owner
 
 
+MEDIA_TOKEN_TTL_SECONDS = 3600
+
+
+def media_user(
+    authorization: str | None = Header(default=None),
+    t: str | None = Query(default=None),
+) -> str:
+    """Identity for BROWSER-NATIVE resource loads (`<video src>`, `<img src>`, download links).
+
+    Those requests are issued by the browser itself and CANNOT carry the axios Authorization
+    header, so gating them on `current_user` alone made every video/download 401 (an unplayable,
+    undownloadable file). This accepts either:
+      * the normal Authorization header (fetch/XHR callers), or
+      * `?t=` — a short-lived, MEDIA-SCOPED token from GET /api/system/media-token.
+    The media scope can't be replayed as an API session (see core.security.verify_token).
+    """
+    if not per_user_mode():
+        return get_settings().admin_username
+    if _bearer(authorization):
+        return current_user(authorization)
+    owner = verify_token(t, scope="media") if t else None
+    if not owner:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    set_key_owner(owner)
+    return owner
+
+
+def _resolve_project(current: str, raw: str | None) -> str:
+    """Shared project resolution: default bucket, path-jail, ownership (see get_project_id)."""
+    store = get_project_store()
+    if not raw or raw == DEFAULT_PROJECT:
+        return store.ensure_user_default(current)
+    try:
+        pid = safe_project_id(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if store.get_project(pid, owner_id=current) is None:
+        raise HTTPException(status_code=404, detail=f"No project {pid!r}")
+    return pid
+
+
+def get_media_project_id(
+    current: str = Depends(media_user),
+    x_project_id: str | None = Header(default=None),
+    projectId: str | None = Query(default=None),
+) -> str:
+    """Like `get_project_id`, but usable from a plain browser URL (media + downloads)."""
+    return _resolve_project(current, x_project_id or projectId)
+
+
 def get_project_id(
     current: str = Depends(current_user),
     x_project_id: str | None = Header(default=None),
@@ -143,17 +193,7 @@ def get_project_id(
     404 rather than 403 so a crafted/foreign id never reveals another user's project existence).
     Ids that could escape the projects/ path jail are rejected with 400.
     """
-    raw = x_project_id or projectId
-    store = get_project_store()
-    if not raw or raw == DEFAULT_PROJECT:
-        return store.ensure_user_default(current)
-    try:
-        pid = safe_project_id(raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if store.get_project(pid, owner_id=current) is None:
-        raise HTTPException(status_code=404, detail=f"No project {pid!r}")
-    return pid
+    return _resolve_project(current, x_project_id or projectId)
 
 
 def require_user(authorization: str | None = Header(default=None)) -> str:

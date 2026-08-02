@@ -5,6 +5,7 @@
  */
 import { api, apiUrl } from '@/lib/api/client'
 import type { AppInfo, AppRunStatus } from '@/lib/api/types'
+import { withMediaToken } from '@/lib/api/media-token'
 
 /** One card per generated app (workflow), de-duplicated across category dirs. GET /workspace/app/list. */
 export async function listApps(): Promise<AppInfo[]> {
@@ -35,5 +36,5 @@ export async function stopApp(body: { dir?: string; runKey?: string }): Promise<
  * query param because an <a href download> doesn't send the X-Project-Id header the interceptor adds.
  */
 export function appDownloadUrl(dir: string, projectId: string): string {
-  return apiUrl(`/workspace/app/download?dir=${encodeURIComponent(dir)}&projectId=${encodeURIComponent(projectId)}`)
+  return withMediaToken(apiUrl(`/workspace/app/download?dir=${encodeURIComponent(dir)}&projectId=${encodeURIComponent(projectId)}`))
 }

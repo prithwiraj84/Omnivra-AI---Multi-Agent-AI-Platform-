@@ -5,6 +5,7 @@
  */
 import { api, apiUrl } from '@/lib/api/client'
 import type { PostRequest, ReelRequest, SocialDecision, SocialDraft } from '@/lib/api/types'
+import { withMediaToken } from '@/lib/api/media-token'
 
 /** Draft a short-form reel (storyboard + stub voiceover). POST /social/reel. */
 export async function draftReel(body: ReelRequest): Promise<SocialDraft> {
@@ -48,5 +49,5 @@ export async function deleteDraft(id: string): Promise<void> {
  */
 export function mediaUrl(path: string, projectId: string): string {
   const clean = path.split('/').map(encodeURIComponent).join('/')
-  return apiUrl(`/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`)
+  return withMediaToken(apiUrl(`/workspace/media/${clean}?projectId=${encodeURIComponent(projectId)}`))
 }

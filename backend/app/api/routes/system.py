@@ -6,8 +6,9 @@ from pydantic import BaseModel, Field
 
 from app import __version__, schemas
 from app.agents.registry import AGENT_REGISTRY
-from app.api.deps import current_user, get_repo, per_user_mode
+from app.api.deps import MEDIA_TOKEN_TTL_SECONDS, current_user, get_repo, per_user_mode
 from app.core.config import get_settings
+from app.core.security import create_token
 from app.db.client import supabase_configured
 from app.db.repositories import DashboardRepository
 from app.providers.registry import get_provider_registry
@@ -184,6 +185,20 @@ def clear_social_connector(
     for key in connector_field_keys(connector_id):
         store.clear(current, key)
     return _single_connector(connector_id, current)
+
+
+@router.get("/media-token")
+def media_token(current: str = Depends(current_user)) -> dict[str, object]:
+    """A short-lived, MEDIA-SCOPED token for browser-native resource loads.
+
+    `<video src>`, `<img src>` and download links are fetched by the browser, which can't attach
+    the Authorization header — so the frontend appends this as `?t=`. It only unlocks media and
+    downloads (scope-checked), never the rest of the API, and it expires within the hour.
+    """
+    return {
+        "token": create_token(current, ttl_seconds=MEDIA_TOKEN_TTL_SECONDS, scope="media"),
+        "expiresIn": MEDIA_TOKEN_TTL_SECONDS,
+    }
 
 
 @router.get("/info")

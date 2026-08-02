@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/app-layout'
 import { AuthGate } from '@/components/auth/auth-gate'
 import { useInitSupabaseAuth } from '@/hooks/useSupabaseAuth'
+import { useMediaToken } from '@/hooks/useMediaToken'
 import { Landing } from '@/pages/Landing'
 import { AuthCallback } from '@/pages/AuthCallback'
 import { Dashboard } from '@/pages/Dashboard'
@@ -43,6 +44,9 @@ const DEPARTMENT_ROUTES: { path: string; slug: string }[] = [
 export default function App() {
   // Install the Supabase OAuth listener once for the whole app (no-op when unconfigured).
   useInitSupabaseAuth()
+  // Keep a media token fresh so <video>/<img>/download URLs can authenticate (they can't send
+  // the axios Authorization header).
+  useMediaToken()
 
   return (
     <Routes>

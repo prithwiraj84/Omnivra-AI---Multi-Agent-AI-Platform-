@@ -30,17 +30,23 @@ def _sign(payload_b64: str, secret: str) -> str:
     return _b64u_encode(sig)
 
 
-def create_token(username: str, *, ttl_seconds: int | None = None) -> str:
+def create_token(username: str, *, ttl_seconds: int | None = None, scope: str = "session") -> str:
     """Create a signed token for ``username``."""
     settings = get_settings()
     ttl = ttl_seconds if ttl_seconds is not None else settings.token_ttl_seconds
-    payload = {"sub": username, "exp": int(time.time()) + ttl}
+    payload = {"sub": username, "exp": int(time.time()) + ttl, "scope": scope}
     payload_b64 = _b64u_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     return f"{payload_b64}.{_sign(payload_b64, settings.api_secret_key)}"
 
 
-def verify_token(token: str) -> str | None:
-    """Return the username if the token is valid + unexpired, else None."""
+def verify_token(token: str, *, scope: str = "session") -> str | None:
+    """Return the username if the token is valid, unexpired, and of the expected SCOPE.
+
+    Scopes keep a narrow credential from being reused as a broad one: a short-lived "media"
+    token (handed to <video>/<img>/download URLs, which cannot send an Authorization header)
+    must never be accepted as a general API session. Tokens minted before scopes existed have
+    no scope claim and are treated as "session" for backwards compatibility.
+    """
     try:
         payload_b64, sig = token.split(".", 1)
     except ValueError:
@@ -51,6 +57,8 @@ def verify_token(token: str) -> str | None:
     try:
         payload = json.loads(_b64u_decode(payload_b64))
     except Exception:  # noqa: BLE001
+        return None
+    if str(payload.get("scope", "session")) != scope:
         return None
     if int(payload.get("exp", 0)) < int(time.time()):
         return None

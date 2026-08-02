@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 
-from app.api.deps import get_project_id, require_user
+from app.api.deps import get_media_project_id, get_project_id, require_user
 from app.schemas import (
     AppInfo,
     AppRunRequest,
@@ -46,7 +46,7 @@ def read_artifact(path: str, project_id: str = Depends(get_project_id)) -> Artif
 
 
 @router.get("/media/{path:path}")
-def read_media(path: str, project_id: str = Depends(get_project_id)) -> FileResponse:
+def read_media(path: str, project_id: str = Depends(get_media_project_id)) -> FileResponse:
     """Stream a binary artifact (rendered .mp4 / generated image) for inline playback.
 
     Project is taken from ?projectId= (native <video>/<img> don't send the X-Project-Id
@@ -118,7 +118,7 @@ def stop_app(req: AppStopRequest, project_id: str = Depends(get_project_id), _us
 
 
 @router.get("/app/download")
-def download_app(dir: str, project_id: str = Depends(get_project_id)) -> Response:
+def download_app(dir: str, project_id: str = Depends(get_media_project_id)) -> Response:
     """Download the generated project as a .zip — only real app files (no .venv/node_modules/caches/
     agent transcripts). Path-jailed. Served like /media (project via ?projectId=) so an <a href>
     download works without an auth header."""

@@ -174,3 +174,38 @@ def test_user_provider_keys_reach_the_request(client, multiuser):
         assert r2.json()["groq"] is False
     finally:
         store.clear("key-user", "groq")
+
+
+def test_media_is_loadable_by_the_browser(client, multiuser):
+    """REGRESSION: <video>/<img>/download are browser-native requests with NO Authorization
+    header. Gating them on the session alone made every generated video unplayable and
+    undownloadable (401). A short-lived media-scoped token in ?t= must unlock them."""
+    from app.core.security import create_token
+    from app.workspace_fs.paths import project_root
+
+    tok = _token("media-user")
+    pid = client.post("/api/projects", json={"name": "media proj"}, headers=_auth(tok)).json()["id"]
+    try:
+        (project_root(pid) / "reports" / "media").mkdir(parents=True, exist_ok=True)
+        (project_root(pid) / "reports" / "media" / "reel.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42fake")
+        url = f"/api/workspace/media/reports/media/reel.mp4?projectId={pid}"
+
+        # what the browser actually does today: no header -> was 401 (black player)
+        assert client.get(url).status_code == 401
+
+        # with a media-scoped token it plays
+        mt = create_token("media-user", ttl_seconds=600, scope="media")
+        ok = client.get(f"{url}&t={mt}")
+        assert ok.status_code == 200, ok.text
+        assert ok.content.startswith(b"\x00\x00\x00\x18ftyp")          # real bytes, not an error page
+        assert ok.headers.get("content-encoding") == "identity"        # never gzipped (breaks seeking)
+
+        # a media token must NOT unlock the rest of the API...
+        assert client.get(f"/api/projects?t={mt}").status_code == 401
+        # ...and must not reach another user's media
+        other = create_token("someone-else", ttl_seconds=600, scope="media")
+        assert client.get(f"{url}&t={other}").status_code == 404
+        # a SESSION token is not a media token either
+        assert client.get(f"{url}&t={_token('media-user')}").status_code == 401
+    finally:
+        client.delete(f"/api/projects/{pid}", headers=_auth(tok))
