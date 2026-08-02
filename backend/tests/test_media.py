@@ -11,7 +11,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 import app.services.media as media
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.main import app
 
 
@@ -127,3 +127,54 @@ def test_tts_settings_default_to_groq_orpheus() -> None:
     assert Settings.model_fields["groq_tts_model"].default == "canopylabs/orpheus-v1-english"
     assert Settings.model_fields["groq_tts_voice"].default == "autumn"  # valid Groq Orpheus voice
     assert Settings.model_fields["groq_tts_format"].default == "wav"
+
+
+# --- TTS model fallback (cp-0070): a retired/gated model must not mute the reel ---------------
+def test_tts_falls_back_when_configured_model_is_rejected(monkeypatch):
+    """Groq 4xx on the configured model (retired / terms not accepted / no access) must roll on
+    to the next model+voice pair rather than returning silence."""
+    import asyncio
+
+    from app.providers.base import FatalProviderError
+    from app.services import media as media_mod
+
+    tried: list[tuple[str, str]] = []
+
+    class _FakeGroq:
+        is_configured = True
+
+        async def generate_audio(self, *, text, model, voice, response_format):  # noqa: ANN001
+            tried.append((model, voice))
+            if model == "canopylabs/orpheus-v1-english":
+                raise FatalProviderError("400: model_terms_required")
+            return b"RIFFfake-wav-bytes"
+
+    monkeypatch.setattr(media_mod, "get_provider_registry", lambda: type("R", (), {"get": staticmethod(lambda _n: _FakeGroq())})())
+    s = get_settings()
+    monkeypatch.setattr(s, "groq_tts_model", "canopylabs/orpheus-v1-english", raising=False)
+    monkeypatch.setattr(s, "groq_tts_voice", "autumn", raising=False)
+
+    rel, note = asyncio.run(media_mod.MediaService()._tts("hello world", "default"))
+
+    assert rel is not None, f"expected a voiceover via fallback, got note: {note}"
+    assert tried[0][0] == "canopylabs/orpheus-v1-english"      # configured model tried first
+    assert tried[1] == ("playai-tts", "Fritz-PlayAI")           # then the fallback pair
+    assert "Fell back from" in note                             # and the note says so
+
+
+def test_tts_reports_every_failure_when_no_model_works(monkeypatch):
+    import asyncio
+
+    from app.providers.base import FatalProviderError
+    from app.services import media as media_mod
+
+    class _AllRejected:
+        is_configured = True
+
+        async def generate_audio(self, **_kw):  # noqa: ANN003
+            raise FatalProviderError("404: model_not_found")
+
+    monkeypatch.setattr(media_mod, "get_provider_registry", lambda: type("R", (), {"get": staticmethod(lambda _n: _AllRejected())})())
+    rel, note = asyncio.run(media_mod.MediaService()._tts("hi", "default"))
+    assert rel is None
+    assert "no usable voice model" in note and "console.groq.com" in note

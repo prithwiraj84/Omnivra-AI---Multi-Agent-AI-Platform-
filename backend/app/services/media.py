@@ -21,6 +21,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.logging import logger
+from app.providers.base import FatalProviderError
 from app.providers.registry import get_provider_registry
 from app.services.artifacts import get_artifact_service
 from app.services.usage import record_media_call
@@ -29,6 +30,28 @@ from app.workspace_fs.paths import DEFAULT_PROJECT
 # All media artifacts live under reports/media so they surface in the Workspace view.
 _MEDIA_DIR = "reports/media"
 _AGENT_ID = "reel-automation"
+
+
+# --- TTS model fallback ----------------------------------------------------------------------
+# Groq accounts differ in which speech models they can use: a model may be retired, gated behind
+# a one-time terms acceptance, or simply absent from the plan. A voice ALSO only works with its
+# own model family, so a fallback must swap model AND voice together. We try the configured pair
+# first, then these, so a reel gets a voiceover instead of rendering mute.
+_TTS_FALLBACK_PAIRS: tuple[tuple[str, str], ...] = (
+    ("playai-tts", "Fritz-PlayAI"),
+    ("canopylabs/orpheus-v1-english", "autumn"),
+)
+
+
+def _tts_candidates(model: str | None, voice: str | None) -> list[tuple[str, str]]:
+    """The configured (model, voice) first, then the known-good fallbacks, de-duplicated."""
+    out: list[tuple[str, str]] = []
+    if model and voice:
+        out.append((model, voice))
+    for pair in _TTS_FALLBACK_PAIRS:
+        if pair[0] not in {m for m, _ in out}:
+            out.append(pair)
+    return out
 
 
 class MediaService:
@@ -134,24 +157,45 @@ class MediaService:
         s = get_settings()
         provider = get_provider_registry().get("groq")
         if not getattr(provider, "is_configured", False):
-            return None, "Set GROQ_API_KEY to synthesize real audio via Groq Orpheus TTS."
+            return None, "Set GROQ_API_KEY to synthesize real audio via Groq TTS."
         clean = (text or "").strip()
         if not clean:
             return None, "No text to synthesize."
-        try:
-            data = await provider.generate_audio(  # type: ignore[attr-defined]
-                text=clean, model=s.groq_tts_model, voice=s.groq_tts_voice, response_format=s.groq_tts_format
-            )
+
+        fmt = s.groq_tts_format or "wav"
+        failures: list[str] = []
+        for model, voice in _tts_candidates(s.groq_tts_model, s.groq_tts_voice):
+            try:
+                data = await provider.generate_audio(  # type: ignore[attr-defined]
+                    text=clean, model=model, voice=voice, response_format=fmt
+                )
+            except FatalProviderError as exc:
+                # 4xx: this model/voice isn't usable on the account (retired, terms not accepted,
+                # no access, or a voice that belongs to a different model family). Try the next
+                # candidate instead of going silent — that's the difference between a working
+                # voiceover and a mute reel.
+                failures.append(f"{model}: {str(exc)[:120]}")
+                logger.warning("Groq TTS model {} rejected ({}); trying the next candidate", model, str(exc)[:120])
+                continue
+            except Exception as exc:  # noqa: BLE001 - transient/network: stop, report honestly
+                logger.warning("Groq TTS failed (continuing without audio): {}", repr(exc))
+                return None, f"Groq TTS unavailable: {str(exc)[:200]}"
             if not data:
-                return None, "Groq TTS returned no audio."
-            rel = f"{_MEDIA_DIR}/{uuid.uuid4().hex}.{s.groq_tts_format or 'wav'}"
+                failures.append(f"{model}: returned no audio")
+                continue
+            rel = f"{_MEDIA_DIR}/{uuid.uuid4().hex}.{fmt}"
             get_artifact_service(project_id).fm.write_bytes(rel, data, agent_id=_AGENT_ID)
-            return rel, f"Voiceover via Groq {s.groq_tts_model} (voice: {s.groq_tts_voice})."
-        except Exception as exc:  # noqa: BLE001 - never let TTS break the caller
-            logger.warning("Groq TTS failed (continuing without audio): {}", repr(exc))
-            # Surface the provider's actual message (e.g. "requires terms acceptance ... console.groq.com")
-            # so the silent-render reason is actionable rather than swallowed.
-            return None, f"Groq TTS unavailable: {str(exc)[:200]}"
+            note = f"Voiceover via Groq {model} (voice: {voice})."
+            if model != s.groq_tts_model:
+                note += f" Fell back from {s.groq_tts_model}, which this account can't use."
+            return rel, note
+
+        return None, (
+            "Groq TTS unavailable — no usable voice model. Tried: "
+            + "; ".join(failures)[:300]
+            + ". Set GROQ_TTS_MODEL/GROQ_TTS_VOICE to a model your account has, or accept the "
+            "model terms at console.groq.com."
+        )
 
     @staticmethod
     def _write_placeholder(fm: Any, *, suffix: str, body: str) -> str | None:
