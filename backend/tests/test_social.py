@@ -360,3 +360,42 @@ def test_real_render_audio_matches_video_duration(tmp_path) -> None:
         assert abs(clip.duration - clip.audio.duration) < 0.3, (clip.duration, clip.audio.duration)
     finally:
         clip.close()
+
+
+# --- reel duration + audio integrity (cp-0074) ------------------------------------------------
+def test_requested_duration_is_honoured() -> None:
+    """The storyboard prompt was hardcoded to 30s, so "1 minute video" always came back ~30s."""
+    from app.services.social import requested_duration_sec
+
+    assert requested_duration_sec("1 minute video on how to learn python programming") == 60.0
+    assert requested_duration_sec("60 seconds reel") == 60.0
+    assert requested_duration_sec("30s clip") == 30.0
+    assert requested_duration_sec("two minutes on AI") == 120.0
+    assert requested_duration_sec("90-second explainer") == 90.0
+    # no duration mentioned -> caller falls back to the default
+    assert requested_duration_sec("a reel about dogs") is None
+    # absurd input is clamped, never passed through
+    assert requested_duration_sec("500 minutes") == 180.0
+
+
+def test_fallback_storyboard_spreads_the_requested_duration() -> None:
+    from app.services.social import SocialService
+
+    sb = SocialService._fallback_storyboard("1 minute video on python", 60.0)
+    assert 55 <= sb.total_duration_sec <= 65, sb.total_duration_sec
+    # and a plain brief still yields the default length
+    sb30 = SocialService._fallback_storyboard("a reel about dogs")
+    assert 25 <= sb30.total_duration_sec <= 35, sb30.total_duration_sec
+
+
+def test_narrated_scene_never_truncates_its_voiceover() -> None:
+    """Scene length must always fit the narration. It used to clamp to _MAX_SCENE_SEC and then cut
+    the audio to match, which chopped speech off mid-word ("the voice stops after some time")."""
+    from app.services import reel_render as rr
+
+    # a narration far longer than the old 30s cap
+    vo_len, base = 48.0, 5.0
+    dur = max(base, vo_len + rr._AUDIO_PAD)
+    assert dur >= vo_len, "scene must outlast its narration"
+    assert dur > rr._MAX_SCENE_SEC, "the cap must not clip a long narrated scene"
+    assert rr._AUDIO_FADE > 0, "scene joins need a fade or they click/pop"

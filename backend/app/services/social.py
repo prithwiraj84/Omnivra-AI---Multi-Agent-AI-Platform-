@@ -57,6 +57,36 @@ def _keywords(brief: str, n: int = 6) -> list[str]:
     return out or ["brand"]
 
 
+_DEFAULT_REEL_SEC = 30.0
+_WORD_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "half": 0.5, "a": 1, "an": 1}
+_DURATION_RE = re.compile(
+    r"(?P<n>\d+(?:\.\d+)?|one|two|three|four|five|half|an?)\s*[-\s]?\s*"
+    r"(?P<unit>seconds?|secs?|s|minutes?|mins?|m)(?![a-zA-Z])",
+    re.IGNORECASE,
+)
+
+
+def requested_duration_sec(brief: str) -> float | None:
+    """The reel length the user asked for, in seconds, or None if they didn't say.
+
+    Understands "1 minute", "60 seconds", "30s", "two minutes", "90-second". Clamped to a sane
+    range so a typo ("500 minutes") can't produce an absurd storyboard.
+    """
+    m = _DURATION_RE.search(brief or "")
+    if not m:
+        return None
+    raw = m.group("n").lower()
+    value = _WORD_NUMBERS.get(raw, None)
+    if value is None:
+        try:
+            value = float(raw)
+        except ValueError:
+            return None
+    unit = m.group("unit").lower()
+    seconds = float(value) * (60.0 if unit.startswith("m") else 1.0)
+    return max(10.0, min(180.0, seconds))
+
+
 class SocialService:
     # ---- live progress ----------------------------------------------------
     def _stepper(self, job: str, project_id: str, kind: str, phase: str, *, total: int):
@@ -119,14 +149,30 @@ class SocialService:
         return draft
 
     async def _build_storyboard(self, brief: str) -> ReelStoryboard:
+        # Honour a duration the user actually asked for ("1 minute", "45s", "two minutes"). This
+        # used to be hardcoded to 30 seconds, so "1 minute video" always came back at ~30s.
+        target = requested_duration_sec(brief) or _DEFAULT_REEL_SEC
+        scene_count = max(3, min(12, round(target / 8)))  # ~8s of narration per scene
+        per_scene = target / scene_count
         prompt = (
-            "Plan a 30-second vertical short-form reel for this brief. Respond ONLY with JSON of the form "
+            f"Plan a {target:.0f}-SECOND vertical short-form reel for this brief. "
+            f"The finished reel MUST run about {target:.0f} seconds in total — this is a hard requirement.\n"
+            f"Use {scene_count} scenes of roughly {per_scene:.0f}s each, and set each scene's durationSec accordingly "
+            f"so the durations sum to about {target:.0f}.\n"
+            "CRITICAL: 'voiceover' is the words actually SPOKEN in that scene, so each one must contain enough "
+            f"narration to fill its {per_scene:.0f} seconds — roughly {max(12, int(per_scene * 2.4))} words, written as "
+            "natural, flowing spoken sentences. Never write a bare label or fragment. 'onScreenText' is a SHORT caption "
+            "and must not be the narration.\n"
+            "Respond ONLY with JSON of the form "
             '{"title","hook","scenes":[{"durationSec","voiceover","brollQuery","onScreenText"}],"musicMood","callToAction"}. '
             f"Brief: {brief}"
         )
-        out = await run_agent("reel-automation", prompt, registry=get_provider_registry(), max_tokens=700)
+        # Longer target -> more scenes and much more narration text, so the budget has to scale or
+        # the JSON gets truncated mid-storyboard.
+        budget = max(700, min(2600, 260 * scene_count))
+        out = await run_agent("reel-automation", prompt, registry=get_provider_registry(), max_tokens=budget)
         parsed = self._parse_storyboard(out.get("content", "")) if out.get("ok") else None
-        return parsed or self._fallback_storyboard(brief)
+        return parsed or self._fallback_storyboard(brief, target)
 
     @staticmethod
     def _parse_storyboard(text: str) -> ReelStoryboard | None:
@@ -141,8 +187,9 @@ class SocialService:
             return None
 
     @staticmethod
-    def _fallback_storyboard(brief: str) -> ReelStoryboard:
+    def _fallback_storyboard(brief: str, target_sec: float | None = None) -> ReelStoryboard:
         kw = _keywords(brief)
+        target = target_sec or requested_duration_sec(brief) or _DEFAULT_REEL_SEC
         beats = [
             ("Hook: stop the scroll", f"Here's how {brief.strip()[:60]} changes everything."),
             ("The problem", "Most teams still do this the slow, manual way."),
@@ -150,8 +197,9 @@ class SocialService:
             ("Proof", "Faster output, fewer errors — with human approval on every step."),
             ("Call to action", "Follow to see your AI workforce in action."),
         ]
+        per = max(3.0, round(target / len(beats), 1))  # spread the requested length over the beats
         scenes = [
-            ReelScene(duration_sec=5.0, voiceover=vo, broll_query=" ".join(kw[i : i + 2]) or "technology", on_screen_text=ost)
+            ReelScene(duration_sec=per, voiceover=vo, broll_query=" ".join(kw[i : i + 2]) or "technology", on_screen_text=ost)
             for i, (ost, vo) in enumerate(beats)
         ]
         return ReelStoryboard(

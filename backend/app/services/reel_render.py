@@ -23,7 +23,8 @@ _W, _H = 1080, 1920  # vertical 9:16
 # Dark brand-ish per-scene background palette (cycled).
 _PALETTE = [(11, 16, 32), (24, 14, 38), (10, 28, 38), (28, 20, 12), (14, 24, 20)]
 _AUDIO_PAD = 0.4       # trailing visual padding after a scene's narration finishes
-_MAX_SCENE_SEC = 30.0  # cap one scene's duration (guard against a runaway TTS clip)
+_MAX_SCENE_SEC = 30.0  # cap a SILENT scene's duration (a narrated scene always fits its audio)
+_AUDIO_FADE = 0.06     # per-scene audio fade in/out — removes the click/pop at scene joins
 
 
 def _patch_pillow() -> None:
@@ -152,14 +153,28 @@ def render_reel(
                 except Exception as exc:  # noqa: BLE001 - one bad clip -> silent scene, not a failed render
                     logger.warning("scene {} voiceover unusable (silent scene): {}", i, repr(exc))
                     vo_clip = None
-            dur = max(base_dur, min(_MAX_SCENE_SEC, vo_clip.duration + _AUDIO_PAD)) if vo_clip else base_dur
+            # The scene ALWAYS outlasts its narration. Previously this clamped to _MAX_SCENE_SEC and
+            # then cut the audio to fit, which chopped long narration off mid-word ("the voice stops
+            # after some time"). Speech is never truncated now — a long clip stretches its scene.
+            dur = max(base_dur, vo_clip.duration + _AUDIO_PAD) if vo_clip else base_dur
+            dur = min(dur, _MAX_SCENE_SEC) if vo_clip is None else dur
 
             # The scene IS its background (b-roll or color), framed to 9:16 and spanning `dur`.
             # No caption/subtitle overlay — just footage + its own narration.
             scene = _background_clip(mp, broll, i, dur, to_close)
             to_close.append(scene)
             if vo_clip is not None:
-                scene = scene.set_audio(vo_clip.set_duration(min(vo_clip.duration, dur)))  # scene-local audio
+                # A hard cut at a scene boundary produces an audible click/pop, and back-to-back TTS
+                # clips joined that way sound "broken" rather than like continuous narration. A few
+                # tens of ms of fade at each edge removes the discontinuity without clipping speech.
+                voice = vo_clip
+                try:
+                    voice = voice.fx(mp.afx.audio_fadein, _AUDIO_FADE).fx(mp.afx.audio_fadeout, _AUDIO_FADE)
+                    to_close.append(voice)
+                except Exception as exc:  # noqa: BLE001 - fades are cosmetic; never fail a render
+                    logger.warning("scene {} audio fade unavailable ({}); using the raw clip", i, repr(exc))
+                    voice = vo_clip
+                scene = scene.set_audio(voice)  # scene-local audio, never truncated (dur >= its length)
                 to_close.append(scene)
             scene_clips.append(scene)
 
