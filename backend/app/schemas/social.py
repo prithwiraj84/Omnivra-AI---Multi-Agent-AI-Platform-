@@ -14,6 +14,9 @@ from typing import Literal
 from app.schemas.dashboard import CamelModel
 
 SocialKind = Literal["reel", "post"]
+# The language the SCRIPT is written in and the VOICE speaks. See services/languages.py for
+# what each code actually changes (prompt directive, TTS engine chain, offline fallback copy).
+ContentLanguage = Literal["en", "hi"]
 ReelTarget = Literal["youtube", "instagram"]
 PostTarget = Literal["facebook", "linkedin", "twitter"]
 
@@ -40,6 +43,9 @@ class ReelStoryboard(CamelModel):
     music_mood: str = "upbeat"
     call_to_action: str = ""
     total_duration_sec: float = 0.0
+    # Persisted so a LATER re-render still picks the voice the script was written for.
+    # Defaults to English, so storyboards drafted before languages existed still load.
+    language: ContentLanguage = "en"
 
 
 class PublishResult(CamelModel):
@@ -59,6 +65,7 @@ class SocialDraft(CamelModel):
     project_id: str
     kind: SocialKind
     brief: str
+    language: ContentLanguage = "en"
     status: str = "awaiting_approval"  # awaiting_approval | published | rejected
     targets: list[str] = []
     # reel payload
@@ -79,11 +86,14 @@ class SocialDraft(CamelModel):
 class ReelRequest(CamelModel):
     brief: str
     targets: list[ReelTarget] | None = None
+    # Unset -> inferred from the brief's script (a Devanagari brief drafts in Hindi), else English.
+    language: ContentLanguage | None = None
 
 
 class PostRequest(CamelModel):
     brief: str
     targets: list[PostTarget] | None = None
+    language: ContentLanguage | None = None
 
 
 class SocialDecision(CamelModel):

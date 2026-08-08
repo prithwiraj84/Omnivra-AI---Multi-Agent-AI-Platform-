@@ -15,6 +15,8 @@ class ImageRequest(CamelModel):
 
 class TTSRequest(CamelModel):
     text: str
+    # Picks the speech engine as well as the voice — see services/languages.py.
+    language: str = "en"
 
 
 class STTRequest(CamelModel):

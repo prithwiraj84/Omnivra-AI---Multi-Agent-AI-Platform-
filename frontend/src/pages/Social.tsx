@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Megaphone,
+  Languages,
   Trash2,
   Wand2,
   X,
@@ -25,11 +26,22 @@ import { useDecideDraft, useDeleteDraft, useDraftPost, useDraftReel, useRenderDr
 import { mediaUrl } from '@/lib/api/social'
 import { useProjectStore } from '@/store/project'
 import { useSocialProgressStore, type JobProgress } from '@/store/social-progress'
-import type { SocialDraft, SocialKind } from '@/lib/api/types'
+import type { ContentLanguage, SocialDraft, SocialKind } from '@/lib/api/types'
 import { apiErrorMessage } from '@/lib/api/errors'
 
 const REEL_TARGETS = ['youtube', 'instagram']
 const POST_TARGETS = ['facebook', 'linkedin', 'twitter']
+
+/**
+ * Selectable content languages — mirrors GET /api/social/languages (services/languages.py).
+ * The choice drives BOTH the written script and the narration voice, so it sits next to the
+ * brief rather than in settings. Static here so the composer renders offline (jsdom/tests).
+ */
+const LANGUAGES: { code: ContentLanguage; label: string; hint: string }[] = [
+  { code: 'en', label: 'English', hint: 'Script and voiceover in English' },
+  { code: 'hi', label: 'हिन्दी', hint: 'Script and voiceover in Hindi — needs an ElevenLabs or Hugging Face key' },
+]
+const LANGUAGE_LABEL: Record<string, string> = { en: 'English', hi: 'हिन्दी' }
 const TARGET_LABEL: Record<string, string> = {
   youtube: 'YouTube',
   instagram: 'Instagram',
@@ -86,6 +98,10 @@ function DraftCard({
           <NeonBadge tone={STATUS_TONE[draft.status] ?? 'info'} dot>
             {STATUS_LABEL[draft.status] ?? draft.status}
           </NeonBadge>
+          {/* Only worth the pixels when it ISN'T the default — otherwise it's noise on every card. */}
+          {draft.language && draft.language !== 'en' && (
+            <NeonBadge tone="info">{LANGUAGE_LABEL[draft.language] ?? draft.language}</NeonBadge>
+          )}
         </div>
         <div className="flex items-start gap-1.5">
           <div className="flex flex-wrap justify-end gap-1">
@@ -274,6 +290,7 @@ function DraftCard({
 export function Social() {
   const [brief, setBrief] = useState('')
   const [kind, setKind] = useState<SocialKind>('reel')
+  const [language, setLanguage] = useState<ContentLanguage>('en')
   const [targets, setTargets] = useState<string[]>([...REEL_TARGETS])
 
   const { data: drafts } = useSocialDrafts()
@@ -311,7 +328,7 @@ export function Social() {
     // Guard the contract here too (not just the disabled button): need a brief, at
     // least one target, and no in-flight generation.
     if (!b || targets.length === 0 || generating) return
-    const body = { brief: b, targets }
+    const body = { brief: b, targets, language }
     const onSuccess = () => setBrief('')
     if (kind === 'reel') draftReel.mutate(body, { onSuccess })
     else draftPost.mutate(body, { onSuccess })
@@ -365,6 +382,27 @@ export function Social() {
                 ))}
               </div>
 
+              {/* Language — drives the SCRIPT and the VOICE together, so it lives in the
+                  composer next to the brief rather than in settings. */}
+              <div className="inline-flex items-center gap-1.5 rounded-md bg-omnivra-surface-2 p-0.5" role="group" aria-label="Content language">
+                <Languages className="ml-1.5 h-3.5 w-3.5 shrink-0 text-[#71717a]" aria-hidden />
+                {LANGUAGES.map((l) => (
+                  <button
+                    key={l.code}
+                    type="button"
+                    aria-pressed={language === l.code}
+                    title={l.hint}
+                    onClick={() => setLanguage(l.code)}
+                    className={cn(
+                      'focus-ring rounded px-2.5 py-1.5 text-xs font-medium transition-colors duration-200',
+                      language === l.code ? 'bg-omnivra-surface-3 text-omnivra-cyan' : 'text-[#a1a1aa] hover:text-[#e4e4e7]',
+                    )}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Target platforms */}
               <div className="flex flex-wrap items-center gap-1.5">
                 {platformOptions.map((t) => {
@@ -398,6 +436,13 @@ export function Social() {
                 {generating ? 'Drafting…' : `Generate ${kind}`}
               </Button>
             </div>
+
+            {language !== 'en' && kind === 'reel' && (
+              <p className="text-[11px] text-[#71717a]">
+                Hindi narration uses ElevenLabs (natural) or Hugging Face (free, more robotic) — Groq’s
+                voices are English-only. Add a key in Integrations if the reel renders silent.
+              </p>
+            )}
 
             {failed && (
               <p className="text-xs text-omnivra-pink" role="status" aria-live="polite">

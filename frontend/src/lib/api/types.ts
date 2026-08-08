@@ -251,6 +251,8 @@ export interface TaskCreate {
 // --- Social content pipeline (cp-0016) --------------------------------------
 
 export type SocialKind = 'reel' | 'post'
+/** The language the script is written in AND the voice speaks. Mirrors ContentLanguage server-side. */
+export type ContentLanguage = 'en' | 'hi'
 export type SocialStatus = 'awaiting_approval' | 'published' | 'rejected'
 
 /** One shot in a vertical short-form reel (camelCase wire shape). */
@@ -269,6 +271,8 @@ export interface ReelStoryboard {
   musicMood: string
   callToAction: string
   totalDurationSec: number
+  /** Persisted so a later re-render still picks a voice that can speak the script. */
+  language: ContentLanguage
 }
 
 /** The outcome of (attempting to) publish a draft to one platform. */
@@ -290,6 +294,7 @@ export interface SocialDraft {
   projectId: string
   kind: SocialKind
   brief: string
+  language: ContentLanguage
   status: SocialStatus
   targets: string[]
   storyboard: ReelStoryboard | null
@@ -308,12 +313,15 @@ export interface SocialDraft {
 export interface ReelRequest {
   brief: string
   targets?: string[]
+  /** Omit to let the server infer it from the brief's script (Devanagari -> Hindi). */
+  language?: ContentLanguage
 }
 
 /** Request body for POST /api/social/post. */
 export interface PostRequest {
   brief: string
   targets?: string[]
+  language?: ContentLanguage
 }
 
 /** Request body for POST /api/social/drafts/{id}/decision. */

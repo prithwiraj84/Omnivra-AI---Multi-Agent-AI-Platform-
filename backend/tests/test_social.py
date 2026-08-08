@@ -145,7 +145,7 @@ def test_delete_reclaims_render_voiceover(client: TestClient, monkeypatch) -> No
     vo_abs.parent.mkdir(parents=True, exist_ok=True)
     vo_abs.write_bytes(b"RIFFfake-wav")
 
-    async def _fake_vo(text, pid):  # noqa: ANN001 - test stub
+    async def _fake_vo(text, pid, language="en"):  # noqa: ANN001 - test stub
         return vo_rel, "synthesized"
 
     monkeypatch.setattr(get_media_service(), "voiceover_with_note", _fake_vo)

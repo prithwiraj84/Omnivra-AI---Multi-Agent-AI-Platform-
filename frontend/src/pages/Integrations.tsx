@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Clapperboard, Cpu, Database, Facebook, Instagram, KeyRound, Linkedin, Plug, Send, ShieldCheck, Sparkles, Youtube, Zap } from 'lucide-react'
+import { AudioLines, Clapperboard, Cpu, Database, Facebook, Instagram, KeyRound, Linkedin, Plug, Send, ShieldCheck, Sparkles, Youtube, Zap } from 'lucide-react'
 
 import { ProviderKeyCard, type ProviderKeyMeta } from '@/components/integrations/provider-key-card'
 import { SocialConnectorCard, type SocialConnectorMeta } from '@/components/integrations/social-connector-card'
@@ -80,7 +80,7 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
     icon: Plug,
     accent: 'blue',
     category: 'llm',
-    detail: 'FLUX image generation + speech-to-text',
+    detail: 'FLUX images, speech-to-text + free Hindi narration',
     docUrl: 'https://huggingface.co/settings/tokens',
     steps: [
       'Sign in at huggingface.co.',
@@ -100,6 +100,22 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
       'Create a free account at pexels.com.',
       'Open the API page and request a key.',
       'Copy the key and paste it here.',
+    ],
+  },
+  {
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    icon: AudioLines,
+    accent: 'violet',
+    category: 'media',
+    detail: 'Natural, human-sounding narration — English & Hindi',
+    docUrl: 'https://elevenlabs.io/app/settings/api-keys',
+    steps: [
+      'Create an account at elevenlabs.io.',
+      'Open Settings → API Keys → “Create API key”.',
+      'Paste it here — reels will use it instead of the free Groq voice.',
+      'Required for natural Hindi narration (Groq’s voices are English-only).',
+      'Optional: set ELEVENLABS_VOICE_ID / ELEVENLABS_VOICE_ID_HI to pin voices.',
     ],
   },
 ]

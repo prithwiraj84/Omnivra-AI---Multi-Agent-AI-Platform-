@@ -75,6 +75,7 @@ PROVIDER_KEY_CATALOG: tuple[ProviderKeySpec, ...] = (
     ProviderKeySpec("groq", "Groq", "llm", "groq_api_key", "https://console.groq.com/keys"),
     ProviderKeySpec("huggingface", "Hugging Face", "llm", "huggingface_api_key", "https://huggingface.co/settings/tokens"),
     ProviderKeySpec("pexels", "Pexels", "media", "pexels_api_key", "https://www.pexels.com/api/new/"),
+    ProviderKeySpec("elevenlabs", "ElevenLabs", "media", "elevenlabs_api_key", "https://elevenlabs.io/app/settings/api-keys"),
 )
 
 _BY_ID: dict[str, ProviderKeySpec] = {spec.id: spec for spec in PROVIDER_KEY_CATALOG}

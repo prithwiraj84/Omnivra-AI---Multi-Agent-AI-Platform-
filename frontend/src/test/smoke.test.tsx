@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from '@/App'
 import { AppProviders } from '@/providers/AppProviders'
@@ -157,6 +157,23 @@ describe('App shell', () => {
     expect(screen.getAllByText(/Social Studio/i).length).toBeGreaterThan(0)
     expect(screen.getByLabelText(/Content brief/i)).toBeTruthy()
     expect(screen.getByText(/No drafts yet/i)).toBeTruthy()
+  })
+
+  it('lets the user pick the content language in the Social Studio', () => {
+    // The language drives BOTH the written script and the narration voice, so it has to be
+    // reachable from the composer itself — English selected by default, Hindi one click away.
+    renderApp('/social')
+    const group = screen.getByRole('group', { name: /Content language/i })
+    const english = within(group).getByRole('button', { name: 'English' })
+    const hindi = within(group).getByRole('button', { name: 'हिन्दी' })
+    expect(english.getAttribute('aria-pressed')).toBe('true')
+    expect(hindi.getAttribute('aria-pressed')).toBe('false')
+
+    fireEvent.click(hindi)
+    expect(hindi.getAttribute('aria-pressed')).toBe('true')
+    expect(english.getAttribute('aria-pressed')).toBe('false')
+    // Picking Hindi explains the engine requirement up front rather than after a silent render.
+    expect(screen.getByText(/English-only/i)).toBeTruthy()
   })
 
   it('renders the Document Studio on /document-studio', () => {

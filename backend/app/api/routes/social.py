@@ -11,22 +11,29 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 
 from app.api.deps import get_project_id, require_user
 from app.schemas.social import PostRequest, ReelRequest, SocialDecision, SocialDraft
+from app.services.languages import language_options
 from app.services.social import get_social_service
 from app.services.social_store import get_social_store
 
 router = APIRouter(tags=["social"])
 
 
+@router.get("/languages")
+def list_languages() -> list[dict[str, str]]:
+    """The languages a reel/post can be written and narrated in (code + native name)."""
+    return language_options()
+
+
 @router.post("/reel", response_model=SocialDraft)
 async def draft_reel(req: ReelRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> SocialDraft:
     """Draft a short-form reel (storyboard + stub voiceover) awaiting approval."""
-    return await get_social_service().draft_reel(req.brief, req.targets, project_id)
+    return await get_social_service().draft_reel(req.brief, req.targets, project_id, req.language)
 
 
 @router.post("/post", response_model=SocialDraft)
 async def draft_post(req: PostRequest, project_id: str = Depends(get_project_id), _user: str = Depends(require_user)) -> SocialDraft:
     """Draft an image post (FLUX image + caption + tags) awaiting approval."""
-    return await get_social_service().draft_post(req.brief, req.targets, project_id)
+    return await get_social_service().draft_post(req.brief, req.targets, project_id, req.language)
 
 
 @router.get("/drafts", response_model=list[SocialDraft])

@@ -29,6 +29,7 @@ from app.schemas.social import (
     SocialDraft,
 )
 from app.services.artifacts import get_artifact_service
+from app.services.languages import DEFAULT_LANGUAGE, detect_language, get_language, normalize_digits
 from app.services.media import get_media_service
 from app.services.pexels import fetch_broll
 from app.services.publishers import publish_to
@@ -58,10 +59,19 @@ def _keywords(brief: str, n: int = 6) -> list[str]:
 
 
 _DEFAULT_REEL_SEC = 30.0
-_WORD_NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "half": 0.5, "a": 1, "an": 1}
+_WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "half": 0.5, "a": 1, "an": 1,
+    # Hindi, so "दो मिनट का वीडियो" is honoured exactly like "two minute video".
+    "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पाँच": 5, "पांच": 5, "आधा": 0.5,
+}
 _DURATION_RE = re.compile(
-    r"(?P<n>\d+(?:\.\d+)?|one|two|three|four|five|half|an?)\s*[-\s]?\s*"
-    r"(?P<unit>seconds?|secs?|s|minutes?|mins?|m)(?![a-zA-Z])",
+    # The leading lookbehind is load-bearing: without it the bare "a"+"m" alternatives match
+    # INSIDE ordinary words, so "Reel for Instagram" parsed as 60 seconds and — because
+    # search() returns the FIRST match — a Latin platform name silently outranked the real
+    # duration later in the string ("Instagram के लिए 30 सेकंड" -> 60s, not 30s).
+    r"(?<![A-Za-zऀ-ॿ])"
+    r"(?P<n>\d+(?:\.\d+)?|one|two|three|four|five|half|an?|एक|दो|तीन|चार|पाँच|पांच|आधा)\s*[-\s]?\s*"
+    r"(?P<unit>seconds?|secs?|s|minutes?|mins?|m|मिनट|मिनिट|सेकंड|सेकेंड|सेकण्ड)(?![a-zA-Z])",
     re.IGNORECASE,
 )
 
@@ -69,10 +79,11 @@ _DURATION_RE = re.compile(
 def requested_duration_sec(brief: str) -> float | None:
     """The reel length the user asked for, in seconds, or None if they didn't say.
 
-    Understands "1 minute", "60 seconds", "30s", "two minutes", "90-second". Clamped to a sane
-    range so a typo ("500 minutes") can't produce an absurd storyboard.
+    Understands "1 minute", "60 seconds", "30s", "two minutes", "90-second", and their Hindi
+    equivalents ("१ मिनट", "दो मिनट", "45 सेकंड"). Clamped to a sane range so a typo
+    ("500 minutes") can't produce an absurd storyboard.
     """
-    m = _DURATION_RE.search(brief or "")
+    m = _DURATION_RE.search(normalize_digits(brief or ""))
     if not m:
         return None
     raw = m.group("n").lower()
@@ -83,8 +94,22 @@ def requested_duration_sec(brief: str) -> float | None:
         except ValueError:
             return None
     unit = m.group("unit").lower()
-    seconds = float(value) * (60.0 if unit.startswith("m") else 1.0)
+    # "m"/"min"/"minute" and "मिनट"/"मिनिट" — everything else is seconds.
+    is_minutes = unit.startswith("m") or unit.startswith("मि")
+    seconds = float(value) * (60.0 if is_minutes else 1.0)
     return max(10.0, min(180.0, seconds))
+
+
+def resolve_language(explicit: str | None, brief: str) -> str:
+    """The language to generate in: the user's explicit pick, else inferred from the brief.
+
+    An explicit choice from the composer always wins. Only when the client didn't send one do
+    we read the brief's script, so someone who types entirely in Devanagari gets a Hindi reel
+    without having to find the toggle first.
+    """
+    if explicit:
+        return get_language(explicit).code
+    return detect_language(brief) or DEFAULT_LANGUAGE
 
 
 class SocialService:
@@ -110,14 +135,17 @@ class SocialService:
         return step
 
     # ---- reel -------------------------------------------------------------
-    async def draft_reel(self, brief: str, targets: list[str] | None, project_id: str | None) -> SocialDraft:
+    async def draft_reel(
+        self, brief: str, targets: list[str] | None, project_id: str | None, language: str | None = None
+    ) -> SocialDraft:
         pid = safe_project_id(project_id)
+        lang = get_language(resolve_language(language, brief))
         draft_id = "reel_" + uuid4().hex[:12]
         step = self._stepper(draft_id, pid, "reel", "draft", total=3)
 
-        await step("storyboard", "Writing the storyboard…", "running", 1)
-        storyboard = await self._build_storyboard(brief)
-        await step("storyboard", "Storyboard ready", "done", 1, detail=f"{len(storyboard.scenes)} scenes · ~{storyboard.total_duration_sec:.0f}s")
+        await step("storyboard", f"Writing the storyboard in {lang.name}…", "running", 1)
+        storyboard = await self._build_storyboard(brief, lang.code)
+        await step("storyboard", "Storyboard ready", "done", 1, detail=f"{len(storyboard.scenes)} scenes · ~{storyboard.total_duration_sec:.0f}s · {lang.native_name}")
 
         fm = get_artifact_service(pid).fm
         base = f"reports/social/{draft_id}"
@@ -128,18 +156,27 @@ class SocialService:
         # A short hook-voiceover PREVIEW via Groq Orpheus (the full narration is re-synthesized
         # at render time). Time-boxed with wait_for so the interactive draft never blocks on a
         # slow/degraded TTS call — on timeout we just skip the preview (never raises).
-        await step("voiceover", "Generating the hook voiceover…", "running", 2)
+        await step("voiceover", f"Generating the hook voiceover ({lang.name})…", "running", 2)
         try:
-            vo = await asyncio.wait_for(get_media_service().synthesize(storyboard.hook or brief, pid), timeout=_DRAFT_TTS_TIMEOUT)
+            vo = await asyncio.wait_for(
+                get_media_service().synthesize(storyboard.hook or brief, pid, lang.code),
+                timeout=_DRAFT_TTS_TIMEOUT,
+            )
         except asyncio.TimeoutError:
             logger.warning("Draft hook voiceover timed out after {}s; continuing without the preview", _DRAFT_TTS_TIMEOUT)
             vo = {}
         if vo.get("path"):
             artifacts.append(vo["path"])
-        await step("voiceover", "Voiceover ready" if vo.get("path") and not vo.get("stub") else "Voiceover preview ready", "done", 2)
+        await step(
+            "voiceover",
+            "Voiceover ready" if vo.get("path") and not vo.get("stub") else "Voiceover preview ready",
+            "done", 2,
+            # A stub here is where the user learns their language has no engine connected yet.
+            detail=None if (vo.get("path") and not vo.get("stub")) else (vo.get("note") or None),
+        )
 
         draft = SocialDraft(
-            id=draft_id, project_id=pid, kind="reel", brief=brief,
+            id=draft_id, project_id=pid, kind="reel", brief=brief, language=lang.code,
             status="awaiting_approval", targets=targets or DEFAULT_REEL_TARGETS,
             storyboard=storyboard, artifacts=artifacts, created_at=_now(),
         )
@@ -148,31 +185,41 @@ class SocialService:
         await self._emit_pending(draft)
         return draft
 
-    async def _build_storyboard(self, brief: str) -> ReelStoryboard:
-        # Honour a duration the user actually asked for ("1 minute", "45s", "two minutes"). This
+    async def _build_storyboard(self, brief: str, language: str = DEFAULT_LANGUAGE) -> ReelStoryboard:
+        # Honour a duration the user actually asked for ("1 minute", "45s", "दो मिनट"). This
         # used to be hardcoded to 30 seconds, so "1 minute video" always came back at ~30s.
+        lang = get_language(language)
         target = requested_duration_sec(brief) or _DEFAULT_REEL_SEC
         scene_count = max(3, min(12, round(target / 8)))  # ~8s of narration per scene
         per_scene = target / scene_count
+        # Words-per-second is language-specific: Hindi carries more syllables per word, so the
+        # same clock second holds fewer of them. Sizing the script with English pacing is how
+        # narration ends up running past the end of its scene.
+        words_per_scene = max(10, int(per_scene * lang.words_per_second))
         prompt = (
             f"Plan a {target:.0f}-SECOND vertical short-form reel for this brief. "
             f"The finished reel MUST run about {target:.0f} seconds in total — this is a hard requirement.\n"
             f"Use {scene_count} scenes of roughly {per_scene:.0f}s each, and set each scene's durationSec accordingly "
             f"so the durations sum to about {target:.0f}.\n"
             "CRITICAL: 'voiceover' is the words actually SPOKEN in that scene, so each one must contain enough "
-            f"narration to fill its {per_scene:.0f} seconds — roughly {max(12, int(per_scene * 2.4))} words, written as "
+            f"narration to fill its {per_scene:.0f} seconds — roughly {words_per_scene} words, written as "
             "natural, flowing spoken sentences. Never write a bare label or fragment. 'onScreenText' is a SHORT caption "
             "and must not be the narration.\n"
+            f"LANGUAGE: {lang.script_directive}\n"
             "Respond ONLY with JSON of the form "
             '{"title","hook","scenes":[{"durationSec","voiceover","brollQuery","onScreenText"}],"musicMood","callToAction"}. '
             f"Brief: {brief}"
         )
         # Longer target -> more scenes and much more narration text, so the budget has to scale or
-        # the JSON gets truncated mid-storyboard.
-        budget = max(700, min(2600, 260 * scene_count))
+        # the JSON gets truncated mid-storyboard. Devanagari costs materially more tokens per word
+        # than Latin script, so a Hindi script needs headroom an English one doesn't.
+        budget = max(700, min(3400, int(260 * scene_count * lang.token_factor)))
         out = await run_agent("reel-automation", prompt, registry=get_provider_registry(), max_tokens=budget)
         parsed = self._parse_storyboard(out.get("content", "")) if out.get("ok") else None
-        return parsed or self._fallback_storyboard(brief, target)
+        storyboard = parsed or self._fallback_storyboard(brief, target, lang.code)
+        # The user's pick is authoritative — never whatever the model happened to echo back.
+        storyboard.language = lang.code
+        return storyboard
 
     @staticmethod
     def _parse_storyboard(text: str) -> ReelStoryboard | None:
@@ -187,19 +234,26 @@ class SocialService:
             return None
 
     @staticmethod
-    def _fallback_storyboard(brief: str, target_sec: float | None = None) -> ReelStoryboard:
+    def _fallback_storyboard(
+        brief: str, target_sec: float | None = None, language: str = DEFAULT_LANGUAGE
+    ) -> ReelStoryboard:
+        lang = get_language(language)
         kw = _keywords(brief)
         target = target_sec or requested_duration_sec(brief) or _DEFAULT_REEL_SEC
-        beats = [
-            ("Hook: stop the scroll", f"Here's how {brief.strip()[:60]} changes everything."),
-            ("The problem", "Most teams still do this the slow, manual way."),
-            ("The shift", "Omnivra's AI company handles it end to end."),
-            ("Proof", "Faster output, fewer errors — with human approval on every step."),
-            ("Call to action", "Follow to see your AI workforce in action."),
-        ]
+        # `{topic}` is the only substitution the beat copy takes, so a language can phrase the
+        # hook however its grammar wants instead of being forced into English word order.
+        topic = brief.strip()[:60]
+        beats = [(ost, vo.format(topic=topic)) for ost, vo in lang.fallback_beats]
         per = max(3.0, round(target / len(beats), 1))  # spread the requested length over the beats
         scenes = [
-            ReelScene(duration_sec=per, voiceover=vo, broll_query=" ".join(kw[i : i + 2]) or "technology", on_screen_text=ost)
+            ReelScene(
+                duration_sec=per,
+                voiceover=vo,
+                # Pexels only indexes English, so a b-roll query NEVER uses the (possibly
+                # Devanagari) brief text — Latin keywords from the brief, else generic terms.
+                broll_query=" ".join(kw[i : i + 2]) or lang.fallback_broll[i % len(lang.fallback_broll)],
+                on_screen_text=ost,
+            )
             for i, (ost, vo) in enumerate(beats)
         ]
         return ReelStoryboard(
@@ -207,15 +261,18 @@ class SocialService:
             hook=beats[0][1],
             scenes=scenes,
             music_mood="upbeat",
-            call_to_action="Follow for more.",
+            call_to_action=lang.fallback_cta,
             total_duration_sec=round(sum(s.duration_sec for s in scenes), 1),
+            language=lang.code,
         )
 
     @staticmethod
     def _reel_manifest(brief: str, sb: ReelStoryboard) -> str:
+        lang = get_language(sb.language)
         lines = [
             f"# Reel draft — {sb.title}", "",
-            f"**Brief:** {brief}", f"**Hook:** {sb.hook}", f"**Music:** {sb.music_mood}",
+            f"**Brief:** {brief}", f"**Language:** {lang.name} ({lang.native_name})",
+            f"**Hook:** {sb.hook}", f"**Music:** {sb.music_mood}",
             f"**Duration:** ~{sb.total_duration_sec:.0f}s", f"**CTA:** {sb.call_to_action}", "", "## Scenes", "",
         ]
         for i, s in enumerate(sb.scenes, 1):
@@ -229,14 +286,17 @@ class SocialService:
         return "\n".join(lines)
 
     # ---- post -------------------------------------------------------------
-    async def draft_post(self, brief: str, targets: list[str] | None, project_id: str | None) -> SocialDraft:
+    async def draft_post(
+        self, brief: str, targets: list[str] | None, project_id: str | None, language: str | None = None
+    ) -> SocialDraft:
         pid = safe_project_id(project_id)
+        lang = get_language(resolve_language(language, brief))
         draft_id = "post_" + uuid4().hex[:12]
         step = self._stepper(draft_id, pid, "post", "draft", total=3)
 
-        await step("caption", "Writing the caption & hashtags…", "running", 1)
-        caption, hashtags = await self._build_caption(brief)
-        await step("caption", "Caption ready", "done", 1, detail=f"{len(hashtags)} hashtags")
+        await step("caption", f"Writing the caption & hashtags in {lang.name}…", "running", 1)
+        caption, hashtags = await self._build_caption(brief, lang.code)
+        await step("caption", "Caption ready", "done", 1, detail=f"{len(hashtags)} hashtags · {lang.native_name}")
 
         await step("image", "Generating the post image (FLUX)…", "running", 2)
         img = await get_media_service().generate_image(self._image_prompt(brief), pid)
@@ -249,7 +309,7 @@ class SocialService:
         artifacts.append(fm.write_text(f"reports/social/{draft_id}/post.md", body, agent_id="social-strategist").rel_path)
 
         draft = SocialDraft(
-            id=draft_id, project_id=pid, kind="post", brief=brief,
+            id=draft_id, project_id=pid, kind="post", brief=brief, language=lang.code,
             status="awaiting_approval", targets=targets or DEFAULT_POST_TARGETS,
             caption=caption, hashtags=hashtags, artifacts=artifacts, created_at=_now(),
         )
@@ -258,17 +318,23 @@ class SocialService:
         await self._emit_pending(draft)
         return draft
 
-    async def _build_caption(self, brief: str) -> tuple[str, list[str]]:
+    async def _build_caption(self, brief: str, language: str = DEFAULT_LANGUAGE) -> tuple[str, list[str]]:
+        lang = get_language(language)
         prompt = (
             'Write a social post for this brief. Respond ONLY with JSON {"caption","hashtags":[...]}. '
+            f"LANGUAGE: write the caption in {lang.name}"
+            + (" using the Devanagari script (हिन्दी), not transliteration." if lang.code != DEFAULT_LANGUAGE else ".")
+            + " Hashtags may stay in English so they stay searchable.\n"
             f"Brief: {brief}"
         )
-        out = await run_agent("social-strategist", prompt, registry=get_provider_registry(), max_tokens=400)
+        out = await run_agent(
+            "social-strategist", prompt, registry=get_provider_registry(), max_tokens=int(400 * lang.token_factor)
+        )
         if out.get("ok"):
             parsed = self._parse_caption(out.get("content", ""))
             if parsed:
                 return parsed
-        return self._fallback_caption(brief)
+        return self._fallback_caption(brief, lang.code)
 
     @staticmethod
     def _parse_caption(text: str) -> tuple[str, list[str]] | None:
@@ -281,8 +347,10 @@ class SocialService:
             return None
 
     @staticmethod
-    def _fallback_caption(brief: str) -> tuple[str, list[str]]:
-        caption = f"{brief.strip()[:180]}\n\nBuilt by Omnivra — your autonomous AI company. Human-approved, every time."
+    def _fallback_caption(brief: str, language: str = DEFAULT_LANGUAGE) -> tuple[str, list[str]]:
+        lang = get_language(language)
+        caption = f"{brief.strip()[:180]}\n\n{lang.fallback_post_tail}"
+        # Hashtags stay Latin on purpose — that's what makes them searchable cross-platform.
         tags = [f"#{w}" for w in _keywords(brief, 5)] + ["#AI", "#Automation", "#Omnivra"]
         return caption, tags
 
@@ -384,7 +452,10 @@ class SocialService:
 
             # PER-SCENE voiceover so each scene's narration is in sync with its own b-roll +
             # caption (one combined track over fixed-length visuals drifts out of sync).
-            await rstep("voiceover", "Synthesizing the voiceover (Orpheus)…", "running", 2)
+            # The storyboard carries the language it was WRITTEN in, so a re-render months
+            # later still picks a voice that can actually speak the script.
+            lang = get_language(draft.storyboard.language or draft.language)
+            await rstep("voiceover", f"Synthesizing the {lang.name} voiceover…", "running", 2)
             voiceovers: list[Path | None] = []
             vo_rels: list[str] = []
             vo_note = ""
@@ -394,7 +465,7 @@ class SocialService:
                 if not txt:
                     voiceovers.append(None)
                     continue
-                rel, note = await get_media_service().voiceover_with_note(txt, pid)
+                rel, note = await get_media_service().voiceover_with_note(txt, pid, lang.code)
                 if rel:
                     voiceovers.append(project_root(pid) / rel)
                     vo_rels.append(rel)

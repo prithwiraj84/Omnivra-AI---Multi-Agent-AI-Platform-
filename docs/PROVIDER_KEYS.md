@@ -51,6 +51,7 @@ env keys are never echoed back at all.
 | Groq (inference + TTS) | `GROQ_API_KEY` | https://console.groq.com/keys |
 | Hugging Face (FLUX images + STT) | `HUGGINGFACE_API_KEY` | https://huggingface.co/settings/tokens |
 | Pexels (reel b-roll, optional) | `PEXELS_API_KEY` | https://www.pexels.com/api/new/ |
+| ElevenLabs (natural reel narration, optional) | `ELEVENLABS_API_KEY` | https://elevenlabs.io/app/settings/api-keys |
 
 Each Integrations card has a **How to get a key** guide with the same steps + a direct link.
 
@@ -65,3 +66,33 @@ Each Integrations card has a **How to get a key** guide with the same steps + a 
 - `DELETE /api/system/provider-keys/{id}` — remove the stored key (falls back to env).
 
 All three require auth when `AUTH_ENABLED=true` (open in dev). Responses are always masked.
+
+## Voice quality for reels
+
+Reel narration uses whichever speech engine is connected, in this order:
+
+1. **ElevenLabs** — set `ELEVENLABS_API_KEY` (or add it in Integrations). This is the one that
+   sounds like a real person; use it if narration quality matters.
+2. **Groq** — the free option (`playai-tts` / Orpheus). Fast and free, noticeably more synthetic.
+
+If ElevenLabs is configured but fails (bad key, quota), the reel automatically falls back to Groq
+rather than rendering silent. `ELEVENLABS_VOICE_ID` is optional — leave it blank and the first
+voice on your account is used; set it to pin a specific one. `ELEVENLABS_MODEL` defaults to
+`eleven_multilingual_v2`.
+
+### Hindi
+
+Social Studio lets you pick **English or हिन्दी** per reel/post; the choice drives the written
+script *and* the voice. The engine chain differs because **Groq's voices are English-only
+models** — they don't reject Devanagari, they "read" it as mangled phonetics, so Hindi never
+routes there:
+
+| Language | Engine order |
+|---|---|
+| English | ElevenLabs → Groq |
+| हिन्दी | ElevenLabs → Hugging Face MMS (`facebook/mms-tts-hin`) |
+
+So a Hindi reel needs **either** an ElevenLabs key (natural) **or** a Hugging Face key (free,
+audibly more robotic). With neither, the reel still drafts and renders — silently — and the
+render note names the key that would fix it. Set `ELEVENLABS_VOICE_ID_HI` to give Hindi its own
+narrator while `ELEVENLABS_VOICE_ID` stays your English one.

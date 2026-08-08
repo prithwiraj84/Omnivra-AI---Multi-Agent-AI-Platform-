@@ -56,6 +56,15 @@ class Settings(BaseSettings):
     groq_tts_voice: str = "autumn"
     groq_tts_format: str = "wav"
 
+    # ElevenLabs — optional HIGH-FIDELITY text-to-speech for reel narration. Unset -> Groq TTS.
+    # Voice id is optional: unset picks the account's first available voice.
+    elevenlabs_api_key: str | None = None
+    elevenlabs_voice_id: str | None = None
+    # Optional per-language narrator, so an English and a Hindi voice can coexist instead of
+    # one setting being re-pointed every time the content language changes.
+    elevenlabs_voice_id_hi: str | None = None
+    elevenlabs_model: str = "eleven_multilingual_v2"
+
     huggingface_api_key: str | None = None
     # HF retired api-inference.huggingface.co; serverless inference now routes through
     # router.huggingface.co/<provider>. hf-inference serves FLUX.1-schnell for image gen.

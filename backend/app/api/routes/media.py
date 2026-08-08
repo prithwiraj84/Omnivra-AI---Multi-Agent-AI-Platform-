@@ -30,7 +30,7 @@ async def generate_image(req: ImageRequest, project_id: str = Depends(get_projec
 @router.post("/tts", response_model=MediaResult)
 async def text_to_speech(req: TTSRequest, project_id: str = Depends(get_project_id)) -> MediaResult:
     """Synthesize speech from text (or a stub placeholder artifact) in the active project."""
-    return MediaResult(**await get_media_service().synthesize(req.text, project_id))
+    return MediaResult(**await get_media_service().synthesize(req.text, project_id, req.language))
 
 
 @router.post("/stt", response_model=TranscriptionResult)

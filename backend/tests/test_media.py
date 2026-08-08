@@ -178,3 +178,76 @@ def test_tts_reports_every_failure_when_no_model_works(monkeypatch):
     rel, note = asyncio.run(media_mod.MediaService()._tts("hi", "default"))
     assert rel is None
     assert "no usable voice model" in note and "console.groq.com" in note
+
+
+# --- ElevenLabs high-fidelity TTS (cp-0068) ---------------------------------------------------
+def _fake_groq(recorder: list):
+    class _G:
+        is_configured = True
+
+        async def generate_audio(self, *, text, model, voice, response_format):  # noqa: ANN001
+            recorder.append(("groq", model))
+            return b"RIFFgroq-wav"
+
+    return type("R", (), {"get": staticmethod(lambda _n: _G())})()
+
+
+def test_elevenlabs_is_preferred_when_configured(monkeypatch):
+    """ElevenLabs is what actually sounds human, so it must win over the free Groq voices."""
+    import asyncio
+
+    from app.services import elevenlabs_tts, media as media_mod
+
+    used: list = []
+    monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: True)
+
+    async def fake_synth(text, *, language="en"):  # noqa: ANN001
+        used.append(("elevenlabs", text, language))
+        return b"ID3fake-mp3-bytes"
+
+    monkeypatch.setattr(elevenlabs_tts, "synthesize", fake_synth)
+    monkeypatch.setattr(media_mod, "get_provider_registry", lambda: _fake_groq(used))
+
+    rel, note = asyncio.run(media_mod.MediaService()._tts("hello there", "default"))
+    assert rel and rel.endswith(".mp3"), rel
+    assert used and used[0][0] == "elevenlabs"          # tried first
+    assert all(u[0] != "groq" for u in used)            # Groq never needed
+    assert "ElevenLabs" in note
+
+
+def test_elevenlabs_failure_falls_back_to_groq(monkeypatch):
+    """A bad/expired ElevenLabs key must not leave the reel silent — Groq still covers it."""
+    import asyncio
+
+    from app.services import elevenlabs_tts, media as media_mod
+
+    used: list = []
+    monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: True)
+
+    async def boom(text, *, language="en"):  # noqa: ANN001
+        used.append(("elevenlabs", text, language))
+        raise RuntimeError("401 unauthorized")
+
+    monkeypatch.setattr(elevenlabs_tts, "synthesize", boom)
+    monkeypatch.setattr(media_mod, "get_provider_registry", lambda: _fake_groq(used))
+
+    rel, note = asyncio.run(media_mod.MediaService()._tts("hello there", "default"))
+    assert rel is not None, f"should have fallen back to Groq, got: {note}"
+    assert [u[0] for u in used][:2] == ["elevenlabs", "groq"]
+    assert "Groq" in note
+
+
+def test_elevenlabs_unconfigured_is_a_no_op(monkeypatch):
+    """With no key it must be invisible — Groq stays the path, no behaviour change."""
+    import asyncio
+
+    from app.services import elevenlabs_tts, media as media_mod
+
+    used: list = []
+    monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: False)
+    monkeypatch.setattr(media_mod, "get_provider_registry", lambda: _fake_groq(used))
+
+    rel, note = asyncio.run(media_mod.MediaService()._tts("hi", "default"))
+    assert rel and rel.endswith(".wav")
+    assert [u[0] for u in used] == ["groq"]
+    assert "Groq" in note
