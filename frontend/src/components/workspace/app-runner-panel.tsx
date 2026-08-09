@@ -88,6 +88,18 @@ function TargetRow({ t, dir }: { t: AppTarget; dir: string }) {
 const TERMINAL: AppTargetStatus[] = ['exited', 'error', 'stopped']
 
 /**
+ * What a Run click should do on this deployment. Exported for tests.
+ *  - 'launch'  the runner can start real servers (local) — open the placeholder tab + POST run
+ *  - 'preview' launching is off but the app can render in the browser — open the preview
+ *  - 'explain' launching is off and there is nothing browser-runnable (backend-only app):
+ *              opening a tab would only ever show a dead end, so say so INLINE instead.
+ */
+export function runAction(runnerOff: boolean, previewHref: string | null): 'launch' | 'preview' | 'explain' {
+  if (!runnerOff) return 'launch'
+  return previewHref ? 'preview' : 'explain'
+}
+
+/**
  * The target the "Run" tab should land on: the FRONTEND if the app has one, because "run the
  * app" means the website, not the API root it talks to. Falls back to whatever is serving
  * (a backend-only project opens its own root). Exported for tests.
@@ -136,6 +148,7 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
   const stop = useStopApp(dir)
   const [showLogs, setShowLogs] = useState(false)
   const [popupBlocked, setPopupBlocked] = useState(false)
+  const [cannotRun, setCannotRun] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
   // The tab opened by the Run click, waiting to be pointed at the app once it is serving.
   const pendingTab = useRef<Window | null>(null)
@@ -208,8 +221,15 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
   }, [targets, run.isPending, data?.note, runnerOff, previewHref])
 
   const onRun = () => {
-    if (runnerOff && previewHref) {
-      window.open(previewHref, '_blank', 'noopener')
+    const action = runAction(runnerOff, previewHref)
+    if (action === 'preview') {
+      window.open(previewHref as string, '_blank', 'noopener')
+      return
+    }
+    if (action === 'explain') {
+      // Backend-only app on a host that can't launch servers: a tab would only show a dead
+      // end (the reported "about:blank" + disabled note). Explain inline instead.
+      setCannotRun(true)
       return
     }
     // Open the tab HERE, synchronously inside the click, so it counts as a user gesture.
@@ -276,6 +296,13 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
         </div>
       ) : (
         <p className="flex flex-1 items-center justify-center text-xs text-[#71717a]">{data?.note || 'No runnable backend/frontend detected here.'}</p>
+      )}
+
+      {cannotRun && (
+        <p className="text-[11px] text-omnivra-amber" role="status">
+          This deployment can’t launch servers, and this app has no browser-runnable frontend
+          (it’s backend-only) — use ZIP above and run it locally with the included README.
+        </p>
       )}
 
       {popupBlocked && (

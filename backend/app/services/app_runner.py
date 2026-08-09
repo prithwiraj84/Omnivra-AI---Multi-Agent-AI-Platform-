@@ -730,10 +730,19 @@ def list_apps(project_id: str | None) -> list[dict]:
             if score > best_score:
                 best_score, best_rel = score, rel
         if best_rel:
-            try:
-                preview = preview_rel(pid, best_rel)
-            except Exception:  # noqa: BLE001 - preview is a bonus, never a failure
-                preview = None
+            # Preview across ALL of this workflow's category dirs, chosen root first. The best
+            # ROOT is scored by runnable targets, but the previewable html often lives in a
+            # SIBLING dir the filer split off — loose html under frontend/wf_x has no
+            # package.json, scores zero targets, loses the root election to backend/wf_x, and
+            # a root-only scan then reported "nothing to preview" for an app that had a page.
+            preview = None
+            for rel in [best_rel] + [rel for _p, rel in sorted(opts) if rel != best_rel]:
+                try:
+                    preview = preview_rel(pid, rel)
+                except Exception:  # noqa: BLE001 - preview is a bonus, never a failure
+                    preview = None
+                if preview:
+                    break
             apps.append({"wf_id": wf_id, "dir": best_rel, "name": wf_id, "preview_path": preview})
     apps.sort(key=lambda a: a["wf_id"])
     return apps

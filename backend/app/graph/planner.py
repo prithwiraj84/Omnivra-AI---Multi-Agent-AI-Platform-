@@ -30,6 +30,22 @@ _KEYWORD_RULES: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
 _FALLBACK = ("solution-architect", "backend-engineer", "frontend-engineer")
 _MAX = 8  # a focused-but-broad team (raised from 5 so a full build can span the right departments)
 
+# Tasks whose deliverable the user will LOOK AT need a frontend builder on the team. The CEO's
+# structured plan is usually good, but models routinely staff "build a todo app" with
+# architect+backend+qa and no frontend-engineer — the run then produces an API and no website,
+# and the Workspace card has nothing to preview or run. If a pure-API task occasionally gains a
+# bonus frontend from the word "app", that's mild over-delivery, not a failure.
+_FRONTEND_TASK_RE = re.compile(
+    r"(?<![a-z0-9])(website|web ?app|web ?page|web ?site|webapp|frontend|dashboard|landing ?page|"
+    r"portal|storefront|blog|ui|apps?|applications?)(?![a-z0-9])"
+)
+_FRONTEND_BUILDERS = frozenset({"frontend-engineer", "uiux-designer"})
+
+
+def _wants_frontend(task: str) -> bool:
+    """True when the task's deliverable is something a user opens in a browser."""
+    return bool(_FRONTEND_TASK_RE.search((task or "").lower()))
+
 
 def delegatable_agents() -> list[str]:
     """Agent ids the CEO may delegate a user task to: the text/reasoning specialists, in
@@ -132,5 +148,14 @@ def plan_delegations(task: str, ceo_text: str) -> list[str]:
                 plan.append(agent_id)
             if len(plan) >= 2:
                 break
+
+    # An app/website task MUST ship something the user can open — even a CEO plan is corrected
+    # here, because "trusted" must not mean "allowed to forget the deliverable". Replaces the
+    # last seat when the team is already at the cap.
+    if _wants_frontend(task) and not (_FRONTEND_BUILDERS & set(plan)):
+        if len(plan) >= _MAX:
+            plan[_MAX - 1] = "frontend-engineer"
+        else:
+            plan.append("frontend-engineer")
 
     return plan[:_MAX]

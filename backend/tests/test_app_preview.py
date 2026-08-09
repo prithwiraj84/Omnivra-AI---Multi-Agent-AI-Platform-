@@ -282,3 +282,31 @@ def test_disabled_runner_now_offers_the_harness_for_vite_source(client: TestClie
     body = client.post("/api/workspace/app/run", json={"dir": APP}).json()
     assert body["previewPath"] == f"{APP}/web/__app__.html"
     assert "static preview" in body["note"]
+
+
+def test_preview_is_found_across_sibling_category_dirs(client: TestClient) -> None:
+    """The reported card: dir=backend/wf_x (it holds the only runnable target), html living in
+    frontend/wf_x. The root election is scored by targets, so the loose html scored zero and
+    the root-only preview scan reported nothing to show. The list must scan the workflow's
+    OTHER category dirs too."""
+    from pathlib import Path
+
+    root = project_root("__default__")
+    api = root / "backend/wf_split/main.py"
+    api.parent.mkdir(parents=True, exist_ok=True)
+    api.write_text("print('api')", encoding="utf-8")
+    (root / "backend/wf_split/requirements.txt").write_text("fastapi\n", encoding="utf-8")
+    page = root / "frontend/wf_split/index.html"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("<h1>the actual website</h1>", encoding="utf-8")
+    try:
+        apps = client.get("/api/workspace/app/list").json()
+        mine = next((a for a in apps if a["wfId"] == "wf_split"), None)
+        assert mine is not None
+        assert mine["dir"] == "backend/wf_split", "the runnable target still owns the card"
+        assert mine["previewPath"] == "frontend/wf_split/index.html", "…but the sibling html previews"
+    finally:
+        import shutil
+
+        shutil.rmtree(root / "backend/wf_split", ignore_errors=True)
+        shutil.rmtree(root / "frontend/wf_split", ignore_errors=True)

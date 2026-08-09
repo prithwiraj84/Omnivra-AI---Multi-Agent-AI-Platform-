@@ -95,3 +95,23 @@ describe('appPreviewUrl', () => {
     expect(url).toContain('/workspace/app/preview/p%201/docs/wf%20x/a%20b.html')
   })
 })
+
+describe('runAction', () => {
+  it('launches for real where the runner is on (local)', async () => {
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(false, null)).toBe('launch')
+    expect(runAction(false, '/preview/x')).toBe('launch')
+  })
+
+  it('opens the preview where launching is off but the app can render', async () => {
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(true, '/preview/x')).toBe('preview')
+  })
+
+  it('explains inline for a backend-only app instead of opening a dead tab', async () => {
+    // The reported symptom: Run -> about:blank -> "runner is disabled". With nothing
+    // browser-runnable, no tab should open at all.
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(true, null)).toBe('explain')
+  })
+})

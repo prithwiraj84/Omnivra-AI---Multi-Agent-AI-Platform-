@@ -162,3 +162,39 @@ def test_dashboard_agent_status_reflects_gate(client: TestClient) -> None:
     agents = client.get("/api/dashboard").json()["agents"]
     ceo = next(a for a in agents if a["id"] == "ceo-manager")
     assert ceo["status"] == "needs_approval", ceo
+
+
+# --- the frontend guarantee (cp-0074): an app task must ship something to look at ------------
+
+
+def test_app_task_always_gets_a_frontend_builder_even_when_the_ceo_forgets() -> None:
+    """The reported failure: the CEO's structured plan staffed 'build an app' with
+    architect+backend+qa — no frontend-engineer — so the run produced an API and no website,
+    and the Workspace card had nothing to preview or run."""
+    ceo = '{"plan": ["solution-architect", "backend-engineer", "qa-engineer"]}'
+    plan = plan_delegations("build a todo app for students", ceo)
+    assert "frontend-engineer" in plan
+    # The CEO's picks are kept — corrected, not discarded.
+    assert plan[:3] == ["solution-architect", "backend-engineer", "qa-engineer"]
+
+
+def test_website_task_keeps_an_existing_frontend_builder_unchanged() -> None:
+    ceo = '{"plan": ["solution-architect", "uiux-designer", "backend-engineer"]}'
+    plan = plan_delegations("build a website for a bakery", ceo)
+    # uiux-designer already covers the deliverable — nothing appended.
+    assert plan == ["solution-architect", "uiux-designer", "backend-engineer"]
+
+
+def test_pure_api_task_is_not_forced_to_grow_a_frontend() -> None:
+    ceo = '{"plan": ["solution-architect", "api-engineer", "backend-engineer"]}'
+    plan = plan_delegations("design a REST endpoint contract for billing", ceo)
+    assert "frontend-engineer" not in plan
+
+
+def test_frontend_guarantee_survives_a_full_team() -> None:
+    """At the 8-agent cap the guarantee must replace a seat, not be silently truncated away."""
+    ceo = ('{"plan": ["solution-architect", "backend-engineer", "api-engineer", "database-engineer", '
+           '"qa-engineer", "secops-engineer", "documentation-agent", "seo-researcher"]}')
+    plan = plan_delegations("build a web app for inventory", ceo)
+    assert len(plan) == 8
+    assert "frontend-engineer" in plan
