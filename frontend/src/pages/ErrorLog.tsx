@@ -10,7 +10,9 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Check,
   ChevronDown,
+  Copy,
   Clock3,
   Database,
   FileWarning,
@@ -54,6 +56,28 @@ const CATEGORY_VIEW: Record<string, { label: string; icon: LucideIcon; tone: Bad
   system: { label: 'System', icon: TriangleAlert, tone: 'cyan' },
 }
 
+/** One error as pasteable text — what a bug report or a support message actually needs. */
+export function formatErrorForCopy(item: ErrorItem): string {
+  const lines = [
+    `[${item.level.toUpperCase()}] ${CATEGORY_VIEW[item.category]?.label ?? item.category}${item.count > 1 ? ` (x${item.count})` : ''}`,
+    item.message,
+    `source: ${item.source}`,
+    `time: ${item.lastTs}`,
+  ]
+  if (item.detail) lines.push(`detail: ${item.detail}`)
+  return lines.join('\n')
+}
+
+/** Copy text to the clipboard; resolves false where the API is unavailable (http, jsdom). */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Compact "how long ago" for a log row. */
 function timeAgo(iso: string): string {
   const ms = Date.now() - Date.parse(iso)
@@ -69,8 +93,17 @@ function timeAgo(iso: string): string {
 
 function ErrorRow({ item }: { item: ErrorItem }) {
   const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const view = CATEGORY_VIEW[item.category] ?? CATEGORY_VIEW.system
   const expandable = Boolean(item.detail) || item.message.length > 160
+
+  const onCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation() // the row toggles detail on click — copying must not also toggle
+    if (await copyText(formatErrorForCopy(item))) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
   return (
     <div
       className={cn(
@@ -98,6 +131,19 @@ function ErrorRow({ item }: { item: ErrorItem }) {
           <p className="mt-0.5 truncate font-mono text-[10px] text-[#52525b]">{item.source}</p>
         </div>
         <span className="mt-0.5 flex shrink-0 items-center gap-2 text-[11px] text-[#71717a]">
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label="Copy this error"
+            title="Copy this error"
+            onClick={onCopy}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') void onCopy(e as unknown as React.MouseEvent)
+            }}
+            className="focus-ring rounded p-0.5 transition-colors duration-200 hover:text-omnivra-cyan"
+          >
+            {copied ? <Check className="h-3.5 w-3.5 text-omnivra-emerald" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+          </span>
           {item.count > 1 && (
             <span className="tabular rounded bg-white/[0.06] px-1.5 font-semibold text-omnivra-amber">
               ×{item.count}
@@ -128,6 +174,7 @@ export function ErrorLog() {
   const [category, setCategory] = useState<string | null>(null)
   const [level, setLevel] = useState<'all' | 'error' | 'warning'>('all')
   const [query, setQuery] = useState('')
+  const [copiedAll, setCopiedAll] = useState(false)
 
   // Opening the page is what "reads" the log: the sidebar badge counts records newer than this.
   // Re-marked whenever new data arrives while the page is open, so the badge never lags behind
@@ -165,9 +212,26 @@ export function ErrorLog() {
               type="button"
               size="sm"
               variant="outline"
+              disabled={filtered.length === 0}
+              onClick={async () => {
+                // Copies what the user SEES — the active category/level/search filters apply.
+                if (await copyText(filtered.map(formatErrorForCopy).join('\n\n'))) {
+                  setCopiedAll(true)
+                  setTimeout(() => setCopiedAll(false), 1500)
+                }
+              }}
+              className="ml-auto"
+            >
+              {copiedAll ? <Check className="h-3.5 w-3.5 text-omnivra-emerald" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+              {copiedAll ? 'Copied' : 'Copy log'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               disabled={clear.isPending || items.length === 0}
               onClick={() => clear.mutate()}
-              className="ml-auto hover:text-omnivra-red"
+              className="hover:text-omnivra-red"
             >
               {clear.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
               Clear

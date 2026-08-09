@@ -49,7 +49,7 @@ env keys are never echoed back at all.
 | Google AI Studio (Gemini) | `GOOGLE_AI_STUDIO_API_KEY` | https://aistudio.google.com/app/apikey |
 | OpenRouter | `OPENROUTER_API_KEY` | https://openrouter.ai/keys |
 | Groq (inference + TTS) | `GROQ_API_KEY` | https://console.groq.com/keys |
-| Hugging Face (FLUX images + STT) | `HUGGINGFACE_API_KEY` | https://huggingface.co/settings/tokens |
+| Hugging Face (stable-diffusion images) | `HUGGINGFACE_API_KEY` | https://huggingface.co/settings/tokens |
 | Pexels (reel b-roll, optional) | `PEXELS_API_KEY` | https://www.pexels.com/api/new/ |
 | ElevenLabs (natural reel narration, optional) | `ELEVENLABS_API_KEY` | https://elevenlabs.io/app/settings/api-keys |
 
@@ -105,3 +105,11 @@ silently, and the render note names the key that would fix it.
 account's *premade* voices and the global defaults until one works, so this recovers by itself —
 but if you pinned `ELEVENLABS_VOICE_ID` to a library voice, clear it. Set
 `ELEVENLABS_VOICE_ID_HI` / `GOOGLE_TTS_VOICE_HI` to give Hindi its own narrator.
+
+## Image generation
+
+hf-inference retires models without warning (FLUX.1-schnell now answers `410 deprecated`), so
+image generation walks a chain: the configured `HUGGINGFACE_IMAGE_MODEL` (default
+`stabilityai/stable-diffusion-3-medium-diffusers`, verified working on the free tier) → known
+fallbacks → **Gemini image** on your Google AI key → a stub with the reasons. A retired model
+rolls on to the next instead of degrading every post to a placeholder.

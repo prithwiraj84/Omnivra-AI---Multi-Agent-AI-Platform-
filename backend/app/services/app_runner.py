@@ -371,9 +371,14 @@ def preview_rel(project_id: str | None, root_rel: str) -> str | None:
             score = (0 if built else 1, 0 if f.lower() == "index.html" else 1, len(rel_parts))
             if best is None or score < best[0]:
                 best = (score, cur_path / f)
-    if best is None:
-        return None
-    return best[1].resolve().relative_to(root).as_posix()
+    if best is not None:
+        return best[1].resolve().relative_to(root).as_posix()
+    # No static html — but Vite/React SOURCE can still run via the in-browser harness (the
+    # visitor's browser transpiles it; nothing generated executes server-side). This is what
+    # lets "Run" open most CEO-generated websites on a host where launching is disabled.
+    from app.services import spa_preview
+
+    return spa_preview.harness_rel(pid, root_rel)
 
 
 def discover_targets(project_id: str | None, root_rel: str) -> list[dict]:

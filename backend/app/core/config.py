@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     elevenlabs_model: str = "eleven_multilingual_v2"
 
     huggingface_api_key: str | None = None
+    # hf-inference retires models without warning (FLUX.1-schnell went 410 'deprecated'); the
+    # configured model is tried first, then the known-good fallbacks in media.py.
+    huggingface_image_model: str = "stabilityai/stable-diffusion-3-medium-diffusers"
+    google_image_model: str | None = None  # blank -> try the known Gemini image models in order
     # HF retired api-inference.huggingface.co; serverless inference now routes through
     # router.huggingface.co/<provider>. hf-inference serves FLUX.1-schnell for image gen.
     huggingface_inference_endpoint: str = "https://router.huggingface.co/hf-inference"

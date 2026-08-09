@@ -206,3 +206,79 @@ def test_disabled_runner_without_preview_keeps_the_zip_note(client: TestClient, 
 def test_system_info_exposes_the_runner_flag(client: TestClient) -> None:
     info = client.get("/api/system/info").json()
     assert info["appRunnerEnabled"] is True  # local default; the Space Dockerfile sets false
+
+
+# --- SPA source harness: run Vite/React source in the visitor's browser -------------------
+
+
+def test_vite_source_app_gets_the_harness_preview() -> None:
+    """The gap the static preview left: most generated frontends are Vite SOURCE. They now
+    preview via the in-browser build harness instead of 'download the ZIP'."""
+    _write("web/package.json", "{}")
+    _write("web/index.html", '<div id="root"></div><script type="module" src="/src/main.jsx"></script>')
+    _write("web/src/main.jsx", "import App from './App'; console.log(App)")
+    _write("web/src/App.jsx", "export default function App(){return null}")
+    assert preview_rel(None, APP) == f"{APP}/web/__app__.html"
+
+
+def test_static_html_still_beats_the_harness() -> None:
+    """A real static page needs no in-browser build — it stays the preferred preview."""
+    _write("web/package.json", "{}")
+    _write("web/src/main.jsx", "x")
+    _write("site/index.html", "<h1>plain</h1>")
+    assert preview_rel(None, APP) == f"{APP}/site/index.html"
+
+
+def test_entry_prefers_what_the_apps_own_index_names() -> None:
+    from pathlib import Path
+
+    from app.services.spa_preview import spa_entry
+
+    _write("web/package.json", "{}")
+    _write("web/index.html", '<script type="module" src="/custom/boot.jsx"></script>')
+    _write("web/custom/boot.jsx", "x")
+    _write("web/src/main.jsx", "conventional entry also exists")
+    root = project_root("__default__") / APP / "web"
+    found = spa_entry(Path(root))
+    assert found is not None and found[1] == "custom/boot.jsx"
+
+
+def test_missing_entry_file_means_no_harness() -> None:
+    """An index.html pointing at a src/main.tsx that was never generated has nothing to run —
+    promising a preview would just render an error page."""
+    _write("web/package.json", "{}")
+    _write("web/index.html", '<script type="module" src="/src/main.tsx"></script>')
+    assert preview_rel(None, APP) is None
+
+
+def test_harness_route_serves_the_builder_page(client: TestClient) -> None:
+    _write("web/package.json", "{}")
+    _write("web/src/main.jsx", "export default 1")
+    r = client.get(f"/api/workspace/app/preview/__default__/{APP}/web/__app__.html")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    # The page must know its entry and carry the in-browser toolchain + pinned React CDN.
+    assert '"./src/main.jsx"' in r.text
+    assert "babel" in r.text.lower() and "esm.sh" in r.text
+    assert "REACT_PIN = '18.3.1'" in r.text, "React must be pinned so all packages share one instance"
+
+
+def test_harness_404s_where_there_is_nothing_to_run(client: TestClient) -> None:
+    _write("api/main.py", "print('backend only')")
+    r = client.get(f"/api/workspace/app/preview/__default__/{APP}/api/__app__.html")
+    assert r.status_code == 404
+    assert "browser-runnable" in r.json()["detail"]
+
+
+def test_disabled_runner_now_offers_the_harness_for_vite_source(client: TestClient, monkeypatch) -> None:
+    """The exact reported flow: Run on the Space for a vite-source app used to dead-end at
+    'download the ZIP'; it must now hand back the harness preview."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "app_runner_enabled", False, raising=False)
+    _write("web/package.json", "{}")
+    _write("web/src/main.jsx", "export default 1")
+
+    body = client.post("/api/workspace/app/run", json={"dir": APP}).json()
+    assert body["previewPath"] == f"{APP}/web/__app__.html"
+    assert "static preview" in body["note"]

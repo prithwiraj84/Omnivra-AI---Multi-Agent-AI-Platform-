@@ -7,7 +7,8 @@ reuse :class:`ArtifactService`'s path-jailed FileManager, so media artifacts can
 never escape the workspace sandbox (the WORKSPACE RULE).
 
 Real provider calls:
-  - Image: Hugging Face Inference router (black-forest-labs/FLUX.1-schnell) -> image bytes.
+  - Image: HF serverless (configured model + fallbacks; hf-inference retires models
+           without warning) -> Gemini image -> stub. Extension picked by magic bytes.
   - STT:   Groq Whisper (whisper-large-v3-turbo) — needs an audio upload + key.
   - TTS:   a per-LANGUAGE engine chain (services/languages.py). English tries ElevenLabs ->
            Gemini -> Groq; Hindi tries ElevenLabs -> Gemini and never Groq, whose playai-tts /
@@ -25,7 +26,7 @@ from app.core.config import get_settings
 from app.core.logging import logger
 from app.providers.base import FatalProviderError
 from app.providers.registry import get_provider_registry
-from app.services import elevenlabs_tts, google_tts
+from app.services import elevenlabs_tts, google_image, google_tts
 from app.services.artifacts import get_artifact_service
 from app.services.languages import DEFAULT_LANGUAGE, Language, get_language
 from app.services.usage import record_media_call
@@ -41,6 +42,19 @@ _AGENT_ID = "reel-automation"
 # a one-time terms acceptance, or simply absent from the plan. A voice ALSO only works with its
 # own model family, so a fallback must swap model AND voice together. We try the configured pair
 # first, then these, so a reel gets a voiceover instead of rendering mute.
+# Image models on the HF serverless tier, tried after the configured one. FLUX.1-schnell is
+# deliberately NOT here — hf-inference returns 410 'deprecated' for it now.
+_IMAGE_FALLBACK_MODELS: tuple[str, ...] = (
+    "stabilityai/stable-diffusion-3-medium-diffusers",
+)
+
+
+def _image_candidates(model: str | None) -> list[str]:
+    """The configured image model first, then the known-good fallbacks, de-duplicated."""
+    out = [model] if model else []
+    return out + [m for m in _IMAGE_FALLBACK_MODELS if m not in out]
+
+
 _TTS_FALLBACK_PAIRS: tuple[tuple[str, str], ...] = (
     ("playai-tts", "Fritz-PlayAI"),
     ("canopylabs/orpheus-v1-english", "autumn"),
@@ -70,33 +84,62 @@ class MediaService:
         record_media_call("image")
         fm = get_artifact_service(project_id).fm
         provider = get_provider_registry().get("huggingface")
+        s = get_settings()
+        failures: list[str] = []
 
+        # 1) Hugging Face serverless — trying each model in turn: hf-inference retires models
+        #    without warning (FLUX went 410 'deprecated'), and a retired model must roll on to
+        #    the next candidate rather than silently degrading every post to a stub.
         if getattr(provider, "is_configured", False):
-            try:
-                data = await provider.generate_image(prompt=prompt)  # type: ignore[attr-defined]
-                # FLUX.1-schnell returns JPEG; pick the extension by magic bytes so the media
-                # endpoint serves the right Content-Type.
-                ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
-                rel = f"{_MEDIA_DIR}/{uuid.uuid4().hex}.{ext}"
-                fm.write_bytes(rel, data, agent_id=_AGENT_ID)
-                return {"path": rel, "stub": False, "note": "Image generated via Hugging Face FLUX.1-schnell."}
-            except Exception as exc:  # noqa: BLE001 - never let media IO break the caller
-                logger.warning("Image generation failed, writing stub: {}", repr(exc))
+            for model in _image_candidates(s.huggingface_image_model):
+                try:
+                    data = await provider.generate_image(prompt=prompt, model=model)  # type: ignore[attr-defined]
+                except FatalProviderError as exc:
+                    failures.append(f"{model}: {str(exc)[:120]}")
+                    logger.warning("Image model {} rejected ({}); trying the next candidate", model, str(exc)[:120])
+                    continue
+                except Exception as exc:  # noqa: BLE001 - transient/network: stop this engine
+                    failures.append(f"huggingface: {str(exc)[:120]}")
+                    logger.warning("Image generation via HF failed ({}); trying the next engine", repr(exc))
+                    break
+                if data:
+                    rel = self._write_image(fm, data)
+                    return {"path": rel, "stub": False, "note": f"Image generated via Hugging Face {model}."}
+                failures.append(f"{model}: returned no image")
 
-        rel = self._write_placeholder(
-            fm,
-            suffix="txt",
-            body=(
-                "[stub image]\n"
-                f"prompt: {prompt}\n"
-                "Set HUGGINGFACE_API_KEY to generate a real image via black-forest-labs/FLUX.1-schnell."
-            ),
+        # 2) Gemini image — the Google AI key the agents already use. Free quota is tight, so a
+        #    429 here just means "stub this one", not a broken pipeline.
+        if google_image.is_configured():
+            try:
+                data = await google_image.generate(prompt)
+                if data:
+                    rel = self._write_image(fm, data)
+                    return {"path": rel, "stub": False, "note": "Image generated via Google Gemini."}
+                failures.append("google: returned no image")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"google: {str(exc)[:120]}")
+                logger.warning("Gemini image failed ({}); writing stub", str(exc)[:160])
+
+        why = ("Tried: " + "; ".join(failures)[:300] + ". ") if failures else ""
+        note = (
+            f"{why}Add a Hugging Face key (stable-diffusion) or a Google AI Studio key (Gemini) "
+            "in Integrations to generate real images."
         )
-        return {
-            "path": rel,
-            "stub": True,
-            "note": "Set HUGGINGFACE_API_KEY to generate real images (black-forest-labs/FLUX.1-schnell).",
-        }
+        rel = self._write_placeholder(fm, suffix="txt", body=f"[stub image]\nprompt: {prompt}\n{note}")
+        return {"path": rel, "stub": True, "note": note}
+
+    @staticmethod
+    def _write_image(fm: Any, data: bytes) -> str:
+        """Persist image bytes with the extension their magic bytes say they are."""
+        if data[:3] == b"\xff\xd8\xff":
+            ext = "jpg"
+        elif data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            ext = "webp"
+        else:
+            ext = "png"
+        rel = f"{_MEDIA_DIR}/{uuid.uuid4().hex}.{ext}"
+        fm.write_bytes(rel, data, agent_id=_AGENT_ID)
+        return rel
 
     async def transcribe(self, filename: str | None) -> dict[str, Any]:
         """Transcribe an audio file (STT). Stubs when the Groq key is unset."""

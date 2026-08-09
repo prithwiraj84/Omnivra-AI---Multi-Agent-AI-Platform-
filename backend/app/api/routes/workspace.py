@@ -28,7 +28,7 @@ from app.schemas import (
     RunProgramRequest,
     RunProgramResult,
 )
-from app.services import app_runner
+from app.services import app_runner, spa_preview
 from app.services.artifacts import get_artifact_service
 from app.services.code_runner import run_workspace_file
 from app.workspace_fs.file_manager import WorkspaceViolationError
@@ -151,7 +151,7 @@ def preview_app_file(
     request: Request,
     t: str | None = Query(default=None),
     current: str = Depends(preview_user),
-) -> FileResponse:
+) -> Response:
     """Serve one file of a generated app for STATIC preview — works where the runner is off.
 
     On a shared host (Hugging Face Space) the launch runner is disabled: a launched app's
@@ -164,13 +164,24 @@ def preview_app_file(
     asset requests authenticate with that. Path-jailed like every other workspace read.
     """
     project_id = _resolve_project(current, project)  # ownership check: foreign project -> 404
+    resp: Response
     try:
         target = get_artifact_service(project_id).fm.media_file(path)
+        resp = FileResponse(target, media_type=_PREVIEW_MIME.get(target.suffix.lower()))
     except WorkspaceViolationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"No file {path!r}") from exc
-    resp = FileResponse(target, media_type=_PREVIEW_MIME.get(target.suffix.lower()))
+        # The reserved harness name never exists on disk: {dir}/__app__.html serves a page that
+        # BUILDS the dir's Vite/React source in the visitor's browser (see services/spa_preview).
+        parts = path.rsplit("/", 1)
+        if parts[-1] == spa_preview.HARNESS_NAME:
+            html = spa_preview.build_harness(project_id, parts[0] if len(parts) > 1 else "")
+            if html is not None:
+                resp = Response(content=html, media_type="text/html")
+            else:
+                raise HTTPException(status_code=404, detail="This app has no browser-runnable entry.") from exc
+        else:
+            raise HTTPException(status_code=404, detail=f"No file {path!r}") from exc
     if t:
         resp.set_cookie(
             PREVIEW_COOKIE, t, max_age=MEDIA_TOKEN_TTL_SECONDS, path=PREVIEW_COOKIE_PATH,

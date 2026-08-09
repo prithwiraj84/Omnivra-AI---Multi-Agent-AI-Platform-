@@ -8,7 +8,7 @@ A free, performance-tuned split:
 | **Backend** (FastAPI) | **Hugging Face Docker Space** (CPU-basic, ~2 vCPU / 16 GB) | the API, agents, realtime `/ws`, Document/Social studios |
 | **Data** (optional) | **Supabase** (free) | Postgres + pgvector + Storage |
 
-> **Two things to accept up front on the free tier:** (1) a free Space's disk is **ephemeral** — `workspace/` (runs, artifacts, memory) resets on rebuild/restart, so put durable state in Supabase; (2) the **universal app-runner is disabled** on the Space (`APP_RUNNER_ENABLED=false`) — its “Open app” port isn’t reachable on a shared host and running generated code there is a security/AUP risk. Generated apps with a static HTML frontend still open via **Preview** (the backend serves their files — file serving, not code execution); server-side apps use **Download-as-ZIP** and run locally.
+> **Two things to accept up front on the free tier:** (1) a free Space's disk is **ephemeral** — `workspace/` (runs, artifacts, memory) resets on rebuild/restart, so put durable state in Supabase; (2) the **universal app-runner is disabled** on the Space (`APP_RUNNER_ENABLED=false`) — its “Open app” port isn’t reachable on a shared host and running generated code there is a security/AUP risk. Generated apps still open via **Preview**: static HTML is served as-is, and Vite/React SOURCE apps are built **in the visitor's browser** (Babel + esm.sh — the backend only serves files; nothing generated executes server-side). Only apps needing their own backend/Node APIs fall back to **Download-as-ZIP**.
 
 ---
 
