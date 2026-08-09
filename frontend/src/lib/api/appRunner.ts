@@ -38,3 +38,13 @@ export async function stopApp(body: { dir?: string; runKey?: string }): Promise<
 export function appDownloadUrl(dir: string, projectId: string): string {
   return withMediaToken(apiUrl(`/workspace/app/download?dir=${encodeURIComponent(dir)}&projectId=${encodeURIComponent(projectId)}`))
 }
+
+/**
+ * Direct URL for one file of a generated app's STATIC preview. The project rides in the PATH
+ * (not ?projectId=) so the page's relative asset URLs keep it; auth rides ?t= on this first
+ * request and a path-scoped cookie afterwards (assets drop the query string).
+ */
+export function appPreviewUrl(previewPath: string, projectId: string): string {
+  const clean = previewPath.split('/').map(encodeURIComponent).join('/')
+  return withMediaToken(apiUrl(`/workspace/app/preview/${encodeURIComponent(projectId)}/${clean}`))
+}

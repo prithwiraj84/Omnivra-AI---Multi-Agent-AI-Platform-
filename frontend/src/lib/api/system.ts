@@ -23,6 +23,8 @@ export interface SystemInfo {
   authEnabled: boolean
   /** Per-user private workspaces — sign-in required via Supabase, independent of authEnabled. */
   perUserWorkspaces?: boolean
+  /** False on shared hosts (HF Space): Run can't launch processes there — Preview is the path. */
+  appRunnerEnabled?: boolean
   rateLimitEnabled: boolean
   securityHeaders: boolean
   supabaseConfigured: boolean

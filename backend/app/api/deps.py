@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import jwt
-from fastapi import Depends, Header, HTTPException, Query
+from fastapi import Cookie, Depends, Header, HTTPException, Query
 
 from app.core.config import get_settings
 from app.core.logging import logger
@@ -152,6 +152,37 @@ def media_user(
     if _bearer(authorization):
         return current_user(authorization)
     owner = verify_token(t, scope="media") if t else None
+    if not owner:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    set_key_owner(owner)
+    return owner
+
+
+# Cookie carrying the media token for STATIC APP PREVIEWS. The preview page's relative asset
+# requests (styles.css, app.js) are resolved by the browser against the page URL and DROP the
+# ?t= query, so the first (tokened) request plants the token in a path-scoped cookie and the
+# asset requests authenticate with that. Path-scoped so it rides ONLY preview requests.
+PREVIEW_COOKIE = "omnivra_media"
+PREVIEW_COOKIE_PATH = "/api/workspace/app/preview"
+
+
+def preview_user(
+    authorization: str | None = Header(default=None),
+    t: str | None = Query(default=None),
+    omnivra_media: str | None = Cookie(default=None),
+) -> str:
+    """`media_user` + a cookie fallback, for static app-preview requests.
+
+    The cookie leg exists because an HTML page's relative asset URLs can't carry the ?t= token
+    (see PREVIEW_COOKIE above). Same media scope, same TTL — nothing new to replay.
+    """
+    if not per_user_mode():
+        return get_settings().admin_username
+    if _bearer(authorization):
+        return current_user(authorization)
+    owner = verify_token(t, scope="media") if t else None
+    if not owner and omnivra_media:
+        owner = verify_token(omnivra_media, scope="media")
     if not owner:
         raise HTTPException(status_code=401, detail="Not authenticated")
     set_key_owner(owner)

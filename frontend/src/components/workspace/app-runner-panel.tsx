@@ -23,7 +23,8 @@ import { NeonBadge, type BadgeTone } from '@/components/ui/neon-badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import { useApps, useAppStatus, useRunApp, useStopApp } from '@/hooks/useAppRunner'
-import { appDownloadUrl } from '@/lib/api/appRunner'
+import { useSystemInfo } from '@/hooks/useSystem'
+import { appDownloadUrl, appPreviewUrl } from '@/lib/api/appRunner'
 import { useProjectStore } from '@/store/project'
 import type { AppTarget, AppTargetStatus } from '@/lib/api/types'
 
@@ -127,9 +128,10 @@ function bootingDoc(appName: string): string {
 </div></body></html>`
 }
 
-function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
+function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; previewPath?: string | null }) {
   const projectId = useProjectStore((s) => s.activeProjectId)
   const { data } = useAppStatus(dir)
+  const { data: sysInfo } = useSystemInfo()
   const run = useRunApp()
   const stop = useStopApp(dir)
   const [showLogs, setShowLogs] = useState(false)
@@ -139,6 +141,12 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
   const pendingTab = useRef<Window | null>(null)
 
   const targets = data?.targets ?? []
+  // Shared hosts (HF Space) disable the LAUNCH runner — a launched app's port isn't reachable
+  // there. Serving the app's files still is, so Run becomes a static Preview instead of a dead
+  // end. Only an explicit false counts: while /system/info is loading we assume launching works.
+  const runnerOff = sysInfo?.appRunnerEnabled === false
+  const preview = data?.previewPath ?? previewPath ?? null
+  const previewHref = preview ? appPreviewUrl(preview, projectId) : null
   const anyActive = targets.some((t) => ['installing', 'starting', 'running'].includes(t.status))
   const setting = targets.some((t) => ['installing', 'starting'].includes(t.status)) || run.isPending
   const logs = targets
@@ -183,6 +191,12 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
       pendingTab.current = null
       return
     }
+    // No live server is coming on this deployment — the static preview IS the destination.
+    if (runnerOff && previewHref) {
+      win.location.replace(previewHref)
+      pendingTab.current = null
+      return
+    }
     if (run.isPending) return
     if (runSettled(targets)) {
       tellTab('The app stopped before it started serving. Check the logs in Omnivra → Workspace.')
@@ -191,9 +205,13 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
       tellTab(data.note)
       pendingTab.current = null
     }
-  }, [targets, run.isPending, data?.note])
+  }, [targets, run.isPending, data?.note, runnerOff, previewHref])
 
   const onRun = () => {
+    if (runnerOff && previewHref) {
+      window.open(previewHref, '_blank', 'noopener')
+      return
+    }
     // Open the tab HERE, synchronously inside the click, so it counts as a user gesture.
     if (!pendingTab.current || pendingTab.current.closed) {
       const win = window.open('', '_blank')
@@ -230,8 +248,8 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
             onClick={onRun}
             title="Set up deps, run the backend & frontend, and open the app in a new tab"
           >
-            {setting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
-            {anyActive ? 'Re-run' : 'Run'}
+            {setting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : runnerOff && previewHref ? <ExternalLink className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
+            {runnerOff && previewHref ? 'Preview' : anyActive ? 'Re-run' : 'Run'}
           </Button>
           {anyActive && (
             <Button type="button" size="sm" variant="outline" disabled={stop.isPending} onClick={() => stop.mutate({ dir })} className="hover:text-omnivra-red">
@@ -314,7 +332,7 @@ export function AppRunnerPanel() {
       ) : (
         <div className="grid grid-cols-1 gap-4 p-4 xl:grid-cols-2">
           {list.map((a) => (
-            <AppRunnerCard key={a.wfId} dir={a.dir} name={a.name} />
+            <AppRunnerCard key={a.wfId} dir={a.dir} name={a.name} previewPath={a.previewPath} />
           ))}
         </div>
       )}

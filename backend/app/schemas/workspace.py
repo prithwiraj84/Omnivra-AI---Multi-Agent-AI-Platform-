@@ -73,6 +73,9 @@ class AppRunStatus(CamelModel):
     dir: str
     targets: list[AppTarget] = []
     note: str = ""
+    # A workspace-relative html file this app can be PREVIEWED from statically (served through
+    # the backend), or None. This is what makes "Run" useful where the launch runner is off.
+    preview_path: str | None = None
 
 
 class AppInfo(CamelModel):
@@ -81,3 +84,4 @@ class AppInfo(CamelModel):
     wf_id: str
     dir: str
     name: str
+    preview_path: str | None = None

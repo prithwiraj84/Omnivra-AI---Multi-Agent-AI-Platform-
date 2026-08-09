@@ -302,6 +302,80 @@ def _detect_node(app_dir: Path) -> str:
     return "node"  # express/koa/fastify/plain server -> run its start script / main entry, scan for its port
 
 
+# ---------------------------------------------------------------------------- static preview
+# Where the LAUNCH runner is disabled (a shared host like a Hugging Face Space can't expose a
+# launched app's localhost port, and running generated code there is an AUP risk), serving the
+# app's STATIC files is still safe — it is file serving, not code execution. preview_rel() finds
+# the html entry a browser could actually render.
+_PREVIEW_SKIP_DIRS = {
+    ".venv", "venv", "env", "node_modules", "__pycache__", ".git", ".run",
+    ".pytest_cache", ".mypy_cache", ".next", ".turbo", ".cache", ".idea", ".vscode",
+}
+# Build OUTPUT dirs: html here is compiled and self-contained, so it previews even though it
+# lives inside a package.json project. (CRA's public/ is NOT here — its index.html is a template
+# full of %PUBLIC_URL% placeholders that only the build resolves.)
+_BUILT_DIRS = {"dist", "build", "out"}
+_PREVIEW_MAX_DEPTH = 4
+
+
+def preview_rel(project_id: str | None, root_rel: str) -> str | None:
+    """The workspace-relative html file that best previews this app statically, or None.
+
+    Selection logic, in order of what actually renders in a browser:
+      * built output (dist/build/out) beats everything — it is the compiled app;
+      * source html inside a package.json project is EXCLUDED (it references /src/main.tsx
+        etc. that only a dev server or build resolves — previewing it shows a broken page);
+      * plain html (no package.json anywhere above it) previews as-is;
+      * index.html beats other names; shallower beats deeper.
+    """
+    pid = safe_project_id(project_id)
+    # resolve() the root too: on Windows the workspace can sit under an 8.3 short path
+    # (C:\Users\PRITHW~1\...), and relative_to() between a resolved child and an unresolved
+    # parent then fails — silently reporting "no preview" for an app that has one.
+    root = project_root(pid).resolve()
+    try:
+        app_dir = (root / root_rel).resolve()
+        app_dir.relative_to(root)  # path-jail: never walk outside the project
+    except (ValueError, OSError):
+        return None
+    if not app_dir.is_dir():
+        return None
+
+    best: tuple[tuple[int, int, int], Path] | None = None
+    # os.walk with pruning, not rglob: node_modules alone can hold tens of thousands of files.
+    for cur, dirnames, filenames in os.walk(app_dir):
+        cur_path = Path(cur)
+        rel_parts = cur_path.relative_to(app_dir).parts
+        if len(rel_parts) >= _PREVIEW_MAX_DEPTH:
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames if d not in _PREVIEW_SKIP_DIRS and not d.startswith(".")]
+        htmls = [f for f in filenames if f.lower().endswith((".html", ".htm"))]
+        if not htmls:
+            continue
+        built = any(p in _BUILT_DIRS for p in rel_parts)
+        if not built:
+            # Under a package.json project (and not built output)? Source html won't render.
+            probe = cur_path
+            in_pkg = False
+            while True:
+                if (probe / "package.json").exists():
+                    in_pkg = True
+                    break
+                if probe == app_dir:
+                    break
+                probe = probe.parent
+            if in_pkg:
+                continue
+        for f in htmls:
+            score = (0 if built else 1, 0 if f.lower() == "index.html" else 1, len(rel_parts))
+            if best is None or score < best[0]:
+                best = (score, cur_path / f)
+    if best is None:
+        return None
+    return best[1].resolve().relative_to(root).as_posix()
+
+
 def discover_targets(project_id: str | None, root_rel: str) -> list[dict]:
     """Find runnable targets in ``root_rel`` and its immediate subdirs (a python backend / node front)."""
     pid = safe_project_id(project_id)
@@ -651,7 +725,11 @@ def list_apps(project_id: str | None) -> list[dict]:
             if score > best_score:
                 best_score, best_rel = score, rel
         if best_rel:
-            apps.append({"wf_id": wf_id, "dir": best_rel, "name": wf_id})
+            try:
+                preview = preview_rel(pid, best_rel)
+            except Exception:  # noqa: BLE001 - preview is a bonus, never a failure
+                preview = None
+            apps.append({"wf_id": wf_id, "dir": best_rel, "name": wf_id, "preview_path": preview})
     apps.sort(key=lambda a: a["wf_id"])
     return apps
 
@@ -677,7 +755,11 @@ def app_status(project_id: str | None, root_rel: str) -> dict:
     except (ValueError, FileNotFoundError):
         pass
     out.sort(key=lambda v: (v["kind"] != "python", v["rel"]))  # backend first
-    return {"dir": root_rel, "targets": out, "note": ""}
+    try:
+        preview = preview_rel(pid, root_rel)
+    except Exception:  # noqa: BLE001
+        preview = None
+    return {"dir": root_rel, "targets": out, "note": "", "preview_path": preview}
 
 
 def stop_app(project_id: str | None, run_key: str) -> dict:

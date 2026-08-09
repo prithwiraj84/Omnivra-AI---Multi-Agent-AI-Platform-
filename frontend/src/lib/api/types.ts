@@ -161,6 +161,8 @@ export interface AppRunStatus {
   dir: string
   targets: AppTarget[]
   note: string
+  /** Workspace-relative html for a STATIC preview (works where the launch runner is off). */
+  previewPath?: string | null
 }
 
 /** One generated app (workflow), de-duplicated across category dirs to its best root. */
@@ -168,6 +170,7 @@ export interface AppInfo {
   wfId: string
   dir: string
   name: string
+  previewPath?: string | null
 }
 
 // --- Knowledge base + Memory + RAG (Phase 9) --------------------------------

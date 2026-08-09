@@ -5,10 +5,19 @@ path can never escape the sandbox (returns 400).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 
-from app.api.deps import get_media_project_id, get_project_id, require_user
+from app.api.deps import (
+    MEDIA_TOKEN_TTL_SECONDS,
+    PREVIEW_COOKIE,
+    PREVIEW_COOKIE_PATH,
+    _resolve_project,
+    get_media_project_id,
+    get_project_id,
+    preview_user,
+    require_user,
+)
 from app.schemas import (
     AppInfo,
     AppRunRequest,
@@ -94,8 +103,17 @@ def run_app(req: AppRunRequest, project_id: str = Depends(get_project_id), _user
     from app.core.config import get_settings
 
     if not get_settings().app_runner_enabled:
-        return AppRunStatus(dir=req.dir, targets=[],
-                            note="The app runner is disabled in this deployment. Download the ZIP and run it locally.")
+        # Include the static preview entry so the client can open THAT instead of a dead end.
+        try:
+            preview = app_runner.preview_rel(project_id, req.dir)
+        except Exception:  # noqa: BLE001
+            preview = None
+        note = (
+            "The launch runner is disabled in this deployment — opening a static preview instead."
+            if preview
+            else "The app runner is disabled in this deployment. Download the ZIP and run it locally."
+        )
+        return AppRunStatus(dir=req.dir, targets=[], note=note, preview_path=preview)
     return AppRunStatus(**app_runner.start_app(project_id, req.dir))
 
 
@@ -115,6 +133,50 @@ def stop_app(req: AppStopRequest, project_id: str = Depends(get_project_id), _us
         parent = "/".join(rel.split("/")[:-1]) or rel
         return AppRunStatus(**app_runner.app_status(project_id, req.dir or parent))
     return AppRunStatus(**app_runner.stop_dir(project_id, req.dir or ""))
+
+
+# MIME overrides for the preview: mimetypes reads the WINDOWS REGISTRY on a Windows host and can
+# return application/x-javascript (or nothing) for .js — and browsers hard-refuse module scripts
+# without a JavaScript MIME type, which would break a previewed app for no visible reason.
+_PREVIEW_MIME = {
+    ".html": "text/html", ".htm": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
+    ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".wasm": "application/wasm",
+}
+
+
+@router.get("/app/preview/{project}/{path:path}")
+def preview_app_file(
+    project: str,
+    path: str,
+    request: Request,
+    t: str | None = Query(default=None),
+    current: str = Depends(preview_user),
+) -> FileResponse:
+    """Serve one file of a generated app for STATIC preview — works where the runner is off.
+
+    On a shared host (Hugging Face Space) the launch runner is disabled: a launched app's
+    localhost port isn't reachable and running generated code there is an AUP risk. Serving the
+    app's FILES is neither — so a static frontend still gets a real URL in production.
+
+    The project rides in the PATH (not ?projectId=) on purpose: the page's relative asset URLs
+    (styles.css, app.js) resolve against the page URL, keeping the project but DROPPING the
+    query — so ?t= is planted into a path-scoped cookie on the first (tokened) request and the
+    asset requests authenticate with that. Path-jailed like every other workspace read.
+    """
+    project_id = _resolve_project(current, project)  # ownership check: foreign project -> 404
+    try:
+        target = get_artifact_service(project_id).fm.media_file(path)
+    except WorkspaceViolationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"No file {path!r}") from exc
+    resp = FileResponse(target, media_type=_PREVIEW_MIME.get(target.suffix.lower()))
+    if t:
+        resp.set_cookie(
+            PREVIEW_COOKIE, t, max_age=MEDIA_TOKEN_TTL_SECONDS, path=PREVIEW_COOKIE_PATH,
+            httponly=True, samesite="lax", secure=request.url.scheme == "https",
+        )
+    return resp
 
 
 @router.get("/app/download")

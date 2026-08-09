@@ -79,3 +79,19 @@ describe('runSettled', () => {
     expect(runSettled([])).toBe(false)
   })
 })
+
+describe('appPreviewUrl', () => {
+  it('carries the project in the PATH so relative asset URLs keep it', async () => {
+    const { appPreviewUrl } = await import('@/lib/api/appRunner')
+    const url = appPreviewUrl('docs/wf_x/site/index.html', 'proj_1')
+    // The page's assets resolve against this URL — a ?projectId= would be dropped by the browser.
+    expect(url).toContain('/workspace/app/preview/proj_1/docs/wf_x/site/index.html')
+    expect(url).not.toContain('projectId=')
+  })
+
+  it('percent-encodes each path segment without eating the separators', async () => {
+    const { appPreviewUrl } = await import('@/lib/api/appRunner')
+    const url = appPreviewUrl('docs/wf x/a b.html', 'p 1')
+    expect(url).toContain('/workspace/app/preview/p%201/docs/wf%20x/a%20b.html')
+  })
+})

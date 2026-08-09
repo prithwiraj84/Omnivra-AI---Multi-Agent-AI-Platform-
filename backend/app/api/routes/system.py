@@ -214,6 +214,8 @@ def system_info() -> dict[str, object]:
         # Per-user private workspaces: sign-in IS required in this mode, independently of the
         # legacy AUTH_ENABLED bearer gate. The UI reports the EFFECTIVE mode from both flags.
         "perUserWorkspaces": per_user_mode(),
+        # Lets the UI swap Run -> Preview where launching processes is disabled (shared hosts).
+        "appRunnerEnabled": get_settings().app_runner_enabled,
         "rateLimitEnabled": s.rate_limit_enabled,
         "securityHeaders": s.security_headers_enabled,
         "supabaseConfigured": supabase_configured(s),
