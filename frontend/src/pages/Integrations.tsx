@@ -95,12 +95,13 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
     icon: Clapperboard,
     accent: 'emerald',
     category: 'media',
-    detail: 'Stock b-roll for rendered reels (optional)',
+    detail: 'Reel b-roll + licensed photos when image generation fails',
     docUrl: 'https://www.pexels.com/api/new/',
     steps: [
       'Create a free account at pexels.com.',
       'Open the API page and request a key.',
       'Copy the key and paste it here.',
+      'Also the safety net for post images: a licensed photo when generation is down.',
     ],
   },
   {

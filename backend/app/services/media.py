@@ -8,7 +8,8 @@ never escape the workspace sandbox (the WORKSPACE RULE).
 
 Real provider calls:
   - Image: HF serverless (configured model + fallbacks; hf-inference retires models
-           without warning) -> Gemini image -> stub. Extension picked by magic bytes.
+           without warning) -> Gemini image -> licensed Pexels STOCK PHOTO -> stub.
+           Extension picked by magic bytes; the note always says which engine produced it.
   - STT:   Groq Whisper (whisper-large-v3-turbo) — needs an audio upload + key.
   - TTS:   a per-LANGUAGE engine chain (services/languages.py). English tries ElevenLabs ->
            Gemini -> Groq; Hindi tries ElevenLabs -> Gemini and never Groq, whose playai-tts /
@@ -26,7 +27,7 @@ from app.core.config import get_settings
 from app.core.logging import logger
 from app.providers.base import FatalProviderError
 from app.providers.registry import get_provider_registry
-from app.services import elevenlabs_tts, google_image, google_tts
+from app.services import elevenlabs_tts, google_image, google_tts, pexels
 from app.services.artifacts import get_artifact_service
 from app.services.languages import DEFAULT_LANGUAGE, Language, get_language
 from app.services.usage import record_media_call
@@ -120,10 +121,31 @@ class MediaService:
                 failures.append(f"google: {str(exc)[:120]}")
                 logger.warning("Gemini image failed ({}); writing stub", str(exc)[:160])
 
+        # 3) Licensed STOCK PHOTO — the last real option. Generation engines fail routinely
+        #    (retired models, exhausted free quota), and a relevant photograph is a far better
+        #    deliverable than a placeholder .txt the user has to notice and work around. It is
+        #    labelled as stock in the note, because a photo is not generated art and the user
+        #    should never have to guess which they got.
+        if pexels.is_configured():
+            try:
+                got = await pexels.fetch_photo(prompt)
+                if got:
+                    data, credit = got
+                    rel = self._write_image(fm, data)
+                    return {
+                        "path": rel,
+                        "stub": False,
+                        "note": f"Stock photo via Pexels — {credit}. (Image generation was unavailable.)",
+                    }
+                failures.append("pexels: no matching photo")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"pexels: {str(exc)[:120]}")
+                logger.warning("Pexels photo fallback failed ({}); writing stub", str(exc)[:160])
+
         why = ("Tried: " + "; ".join(failures)[:300] + ". ") if failures else ""
         note = (
             f"{why}Add a Hugging Face key (stable-diffusion) or a Google AI Studio key (Gemini) "
-            "in Integrations to generate real images."
+            "to generate images, or a Pexels key for licensed stock photos, in Integrations."
         )
         rel = self._write_placeholder(fm, suffix="txt", body=f"[stub image]\nprompt: {prompt}\n{note}")
         return {"path": rel, "stub": True, "note": note}

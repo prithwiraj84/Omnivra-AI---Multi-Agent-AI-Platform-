@@ -50,7 +50,7 @@ env keys are never echoed back at all.
 | OpenRouter | `OPENROUTER_API_KEY` | https://openrouter.ai/keys |
 | Groq (inference + TTS) | `GROQ_API_KEY` | https://console.groq.com/keys |
 | Hugging Face (stable-diffusion images) | `HUGGINGFACE_API_KEY` | https://huggingface.co/settings/tokens |
-| Pexels (reel b-roll, optional) | `PEXELS_API_KEY` | https://www.pexels.com/api/new/ |
+| Pexels (reel b-roll + stock photo fallback) | `PEXELS_API_KEY` | https://www.pexels.com/api/new/ |
 | ElevenLabs (natural reel narration, optional) | `ELEVENLABS_API_KEY` | https://elevenlabs.io/app/settings/api-keys |
 
 Each Integrations card has a **How to get a key** guide with the same steps + a direct link.
@@ -111,5 +111,16 @@ but if you pinned `ELEVENLABS_VOICE_ID` to a library voice, clear it. Set
 hf-inference retires models without warning (FLUX.1-schnell now answers `410 deprecated`), so
 image generation walks a chain: the configured `HUGGINGFACE_IMAGE_MODEL` (default
 `stabilityai/stable-diffusion-3-medium-diffusers`, verified working on the free tier) → known
-fallbacks → **Gemini image** on your Google AI key → a stub with the reasons. A retired model
-rolls on to the next instead of degrading every post to a placeholder.
+fallbacks → **Gemini image** on your Google AI key → a **licensed Pexels stock photo** → a stub
+with the reasons. A retired model rolls on to the next instead of degrading every post to a
+placeholder.
+
+The stock-photo step is what keeps a post publishable when every generator is down. The prompt
+is distilled to a 2–4 word search (a full styled prompt matches nothing), broadened if it's too
+specific, and the result is labelled **"Stock photo via Pexels — <photographer>"** in the note,
+because a photograph is not generated art and you should never have to guess which you got.
+
+> **Why not scrape Google Images?** Those results are third-party copyrighted works, and this
+> pipeline publishes to Instagram/LinkedIn/YouTube — the rights exposure is real, not
+> theoretical. Pexels' license explicitly permits commercial use, it needs no browser engine
+> (so it works on a shared host), and it doesn't break when a search page changes its markup.

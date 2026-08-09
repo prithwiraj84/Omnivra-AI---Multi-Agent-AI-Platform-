@@ -298,14 +298,23 @@ class SocialService:
         caption, hashtags = await self._build_caption(brief, lang.code)
         await step("caption", "Caption ready", "done", 1, detail=f"{len(hashtags)} hashtags · {lang.native_name}")
 
-        await step("image", "Generating the post image (FLUX)…", "running", 2)
+        await step("image", "Creating the post image…", "running", 2)
         img = await get_media_service().generate_image(self._image_prompt(brief), pid)
         artifacts: list[str] = [img["path"]] if img.get("path") else []
-        await step("image", "Image ready" if img.get("path") else "Image step complete", "done", 2,
-                   detail=None if img.get("path") else "set HUGGINGFACE_API_KEY for a real FLUX image")
+        # The note names the engine (generated vs stock photo + photographer) — surface it, so
+        # the user learns WHICH they got at the moment it happens, not by inspecting bytes.
+        await step("image", "Image ready" if img.get("path") and not img.get("stub") else "Image step complete",
+                   "done", 2, detail=img.get("note") or None)
 
         fm = get_artifact_service(pid).fm
-        body = f"# Post draft\n\n**Brief:** {brief}\n\n## Caption\n\n{caption}\n\n## Hashtags\n\n{' '.join(hashtags)}\n"
+        # Provenance goes in the DURABLE artifact, not just the transient progress note: a stock
+        # photo carries a photographer credit, and a post that gets published months later should
+        # still be able to say where its image came from.
+        provenance = f"\n## Image\n\n{img.get('note', '')}\n" if img.get("note") else ""
+        body = (
+            f"# Post draft\n\n**Brief:** {brief}\n\n## Caption\n\n{caption}\n\n"
+            f"## Hashtags\n\n{' '.join(hashtags)}\n{provenance}"
+        )
         artifacts.append(fm.write_text(f"reports/social/{draft_id}/post.md", body, agent_id="social-strategist").rel_path)
 
         draft = SocialDraft(
