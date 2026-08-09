@@ -13,7 +13,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from app.services import elevenlabs_tts, hf_tts, media as media_mod
+from app.services import elevenlabs_tts, google_tts, media as media_mod
 from app.services.languages import ENGLISH, HINDI, get_language, language_options, normalize_digits
 from app.services.social import SocialService, requested_duration_sec, resolve_language
 
@@ -27,7 +27,16 @@ def test_hindi_never_routes_to_groq() -> None:
     """Groq's playai-tts/Orpheus are English models. Hindi must not list them at all."""
     assert "groq" not in HINDI.tts_chain
     assert HINDI.tts_chain[0] == "elevenlabs", "the natural-sounding engine goes first"
+    assert "google" in HINDI.tts_chain, "Hindi needs a FREE engine, and Gemini is the only one"
     assert "groq" in ENGLISH.tts_chain, "English keeps its free fallback"
+
+
+def test_no_dead_engines_in_any_chain() -> None:
+    """Every engine named in a chain must have a handler in MediaService, or a render silently
+    skips it. Hugging Face was removed here after its serverless tier dropped all TTS models."""
+    handled = {"elevenlabs", "google", "groq"}
+    for lang in (ENGLISH, HINDI):
+        assert set(lang.tts_chain) <= handled, f"{lang.code} names an engine with no handler"
 
 
 def test_hindi_with_only_groq_configured_stays_silent_with_an_honest_note(monkeypatch) -> None:
@@ -43,7 +52,7 @@ def test_hindi_with_only_groq_configured_stays_silent_with_an_honest_note(monkey
             return b"RIFFshould-never-happen"
 
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: False)
-    monkeypatch.setattr(hf_tts, "is_configured", lambda _lang="hi": False)
+    monkeypatch.setattr(google_tts, "is_configured", lambda: False)
     monkeypatch.setattr(media_mod, "get_provider_registry", lambda: type("R", (), {"get": staticmethod(lambda _n: _Groq())})())
 
     rel, note = asyncio.run(media_mod.MediaService()._tts("नमस्ते दुनिया", "default", "hi"))
@@ -51,7 +60,7 @@ def test_hindi_with_only_groq_configured_stays_silent_with_an_honest_note(monkey
     assert rel is None
     assert calls == [], "Groq must never be asked to speak Hindi"
     assert "English-only" in note, note
-    assert "ElevenLabs" in note and "Hugging Face" in note, note
+    assert "ElevenLabs" in note and "Google AI Studio" in note, note
 
 
 def test_hindi_prefers_elevenlabs_and_passes_the_language_through(monkeypatch) -> None:
@@ -70,23 +79,24 @@ def test_hindi_prefers_elevenlabs_and_passes_the_language_through(monkeypatch) -
     assert "Hindi" in note
 
 
-def test_hindi_falls_back_to_hugging_face_when_elevenlabs_is_absent(monkeypatch) -> None:
-    """No ElevenLabs key still gets REAL Hindi audio via the free MMS model."""
+def test_hindi_falls_back_to_gemini_when_elevenlabs_is_absent(monkeypatch) -> None:
+    """No ElevenLabs key still gets REAL Hindi audio — free, on the Google AI key the LLM
+    agents already use. This is the ONLY free engine that speaks Hindi: Groq is English-only
+    and Hugging Face's serverless tier hosts no TTS model at all."""
     seen: list[str] = []
 
-    async def fake_hf(text, *, language="hi"):  # noqa: ANN001
+    async def fake_google(text, *, language="en"):  # noqa: ANN001
         seen.append(language)
         return b"RIFFfake-wav"
 
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: False)
-    monkeypatch.setattr(hf_tts, "is_configured", lambda _lang="hi": True)
-    monkeypatch.setattr(hf_tts, "synthesize", fake_hf)
+    monkeypatch.setattr(google_tts, "is_configured", lambda: True)
+    monkeypatch.setattr(google_tts, "synthesize", fake_google)
 
     rel, note = asyncio.run(media_mod.MediaService()._tts("नमस्ते", "default", "hi"))
     assert rel and rel.endswith(".wav")
     assert seen == ["hi"]
-    # The quality trade must be stated, not hidden.
-    assert "ElevenLabs" in note and "free" in note.lower()
+    assert "Hindi" in note and "Gemini" in note
 
 
 def test_english_chain_is_unchanged(monkeypatch) -> None:
@@ -101,10 +111,11 @@ def test_english_chain_is_unchanged(monkeypatch) -> None:
             return b"RIFFgroq-wav"
 
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: False)
+    monkeypatch.setattr(google_tts, "is_configured", lambda: False)
     monkeypatch.setattr(media_mod, "get_provider_registry", lambda: type("R", (), {"get": staticmethod(lambda _n: _Groq())})())
 
     rel, _note = asyncio.run(media_mod.MediaService()._tts("hello", "default"))
-    assert rel and used == ["groq"]
+    assert rel and used == ["groq"], "Groq must still cover English when nothing else is configured"
 
 
 # --- ElevenLabs model selection ---------------------------------------------------------
@@ -287,3 +298,164 @@ def test_old_drafts_without_a_language_still_load() -> None:
     assert draft.language == "en"
     assert ReelStoryboard(title="t").language == "en"
     assert get_language(None) is ENGLISH
+
+
+# --- Gemini TTS: the free multilingual engine -------------------------------------------
+
+
+def test_gemini_pcm_is_wrapped_in_a_wav_container() -> None:
+    """The API returns RAW PCM, not a container. Unwrapped samples are unplayable and ffmpeg
+    refuses them, so the reel would render silent with no error anywhere."""
+    import io
+    import wave
+
+    pcm = b"\x00\x01" * 2400
+    data = google_tts._pcm_to_wav(pcm, "audio/L16;codec=pcm;rate=24000")
+    assert data[:4] == b"RIFF"
+    with wave.open(io.BytesIO(data), "rb") as r:
+        assert r.getframerate() == 24_000
+        assert r.getnchannels() == 1
+        assert r.getsampwidth() == 2
+        assert r.getnframes() == 2400
+
+
+def test_gemini_mime_variants_are_parsed() -> None:
+    """The two TTS models report the format differently; assuming one shape resamples the other
+    to the wrong rate, which sounds like a chipmunk or a slowed-down drone."""
+    import io
+    import wave
+
+    for mime, rate in [
+        ("audio/L16;codec=pcm;rate=24000", 24_000),
+        ("audio/l16; rate=24000; channels=1", 24_000),
+        ("audio/l16; rate=16000; channels=1", 16_000),
+        ("audio/unknown", 24_000),  # documented default
+    ]:
+        with wave.open(io.BytesIO(google_tts._pcm_to_wav(b"\x00\x01" * 100, mime)), "rb") as r:
+            assert r.getframerate() == rate, mime
+
+
+def test_gemini_extracts_audio_from_either_payload_casing() -> None:
+    """Google's REST payloads use inlineData; some client shapes use inline_data."""
+    import base64
+
+    raw = b"\x00\x01\x02\x03"
+    b64 = base64.b64encode(raw).decode()
+    for key in ("inlineData", "inline_data"):
+        payload = {"candidates": [{"content": {"parts": [{key: {"data": b64, "mimeType": "audio/L16;rate=24000"}}]}}]}
+        got = google_tts._extract_audio(payload)
+        assert got and got[0] == raw
+
+    # A text-only answer (e.g. the model refused) must be "no audio", not a crash.
+    assert google_tts._extract_audio({"candidates": [{"content": {"parts": [{"text": "sorry"}]}}]}) is None
+    assert google_tts._extract_audio({}) is None
+
+
+def test_gemini_model_order_puts_the_configured_one_first(monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    s = get_settings()
+    monkeypatch.setattr(s, "google_tts_model", "gemini-2.5-flash-preview-tts", raising=False)
+    models = google_tts._models()
+    assert models[0] == "gemini-2.5-flash-preview-tts"
+    assert len(models) == len(set(models)), "no duplicates when the configured model is a known one"
+
+    monkeypatch.setattr(s, "google_tts_model", None, raising=False)
+    assert google_tts._models() == list(google_tts._MODELS)
+
+
+def test_gemini_per_language_voice(monkeypatch) -> None:
+    from app.core.config import get_settings
+
+    s = get_settings()
+    monkeypatch.setattr(s, "google_tts_voice", "Charon", raising=False)
+    monkeypatch.setattr(s, "google_tts_voice_hi", "Kore", raising=False)
+    assert google_tts._voice_for("hi") == "Kore"
+    assert google_tts._voice_for("en") == "Charon"
+    monkeypatch.setattr(s, "google_tts_voice_hi", None, raising=False)
+    assert google_tts._voice_for("hi") == "Charon"
+
+
+# --- ElevenLabs: free accounts cannot use library voices --------------------------------
+
+
+def test_elevenlabs_prefers_free_usable_voice_categories() -> None:
+    """Picking "the account's first voice" 402s on a free account whose Voice Library entries
+    sort first ("Free users cannot use library voices"). Premade must win."""
+    import asyncio
+
+    import httpx
+
+    voices = {
+        "voices": [
+            {"voice_id": "lib-1", "category": "professional", "name": "Library One"},
+            {"voice_id": "premade-1", "category": "premade", "name": "Rachel"},
+            {"voice_id": "cloned-1", "category": "cloned", "name": "My Clone"},
+        ]
+    }
+    transport = httpx.MockTransport(lambda _req: httpx.Response(200, json=voices))
+    async def run():
+        async with httpx.AsyncClient(transport=transport) as c:
+            return await elevenlabs_tts._voice_candidates(c, "k", "en")
+
+    got = asyncio.run(run())
+    assert got[0] == "premade-1", "a free-usable premade voice must be tried first"
+    assert "cloned-1" in got
+    assert got.index("premade-1") < got.index("cloned-1")
+    assert "lib-1" not in got, "paid-only library/professional voices must not be offered"
+
+
+def test_elevenlabs_falls_back_to_global_defaults_when_listing_fails() -> None:
+    """A permission-scoped key can 401 on /v1/voices while still being able to synthesize —
+    that must not mute the reel."""
+    import asyncio
+
+    import httpx
+
+    transport = httpx.MockTransport(lambda _req: httpx.Response(401, json={"detail": "nope"}))
+    async def run():
+        async with httpx.AsyncClient(transport=transport) as c:
+            return await elevenlabs_tts._voice_candidates(c, "k", "en")
+
+    got = asyncio.run(run())
+    assert got, "must still offer the global premade defaults"
+    assert set(got) == set(elevenlabs_tts._DEFAULT_VOICE_IDS)
+    assert len(got) > 1, "one default is not enough — free-tier access to premade voices varies"
+
+
+def test_elevenlabs_voice_walk_is_bounded() -> None:
+    """Each rejected voice costs a round trip; a scene must not stall discovering that nothing
+    on the account is usable."""
+    import asyncio
+
+    import httpx
+
+    many = {"voices": [{"voice_id": f"v{i}", "category": "premade"} for i in range(50)]}
+    transport = httpx.MockTransport(lambda _req: httpx.Response(200, json=many))
+    async def run():
+        async with httpx.AsyncClient(transport=transport) as c:
+            return await elevenlabs_tts._voice_candidates(c, "k", "en")
+
+    assert len(asyncio.run(run())) <= elevenlabs_tts._MAX_VOICE_ATTEMPTS
+
+
+def test_elevenlabs_configured_voice_is_tried_before_discovery() -> None:
+    import asyncio
+
+    import httpx
+    from app.core.config import get_settings
+
+    s = get_settings()
+    original = s.elevenlabs_voice_id
+    s.elevenlabs_voice_id = "pinned"
+    try:
+        transport = httpx.MockTransport(
+            lambda _req: httpx.Response(200, json={"voices": [{"voice_id": "premade-1", "category": "premade"}]})
+        )
+        async def run():
+            async with httpx.AsyncClient(transport=transport) as c:
+                return await elevenlabs_tts._voice_candidates(c, "k", "en")
+
+        assert asyncio.run(run())[0] == "pinned"
+    finally:
+        s.elevenlabs_voice_id = original

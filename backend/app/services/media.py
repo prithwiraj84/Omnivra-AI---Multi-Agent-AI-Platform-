@@ -9,11 +9,11 @@ never escape the workspace sandbox (the WORKSPACE RULE).
 Real provider calls:
   - Image: Hugging Face Inference router (black-forest-labs/FLUX.1-schnell) -> image bytes.
   - STT:   Groq Whisper (whisper-large-v3-turbo) — needs an audio upload + key.
-  - TTS:   a per-LANGUAGE engine chain (services/languages.py). English tries ElevenLabs then
-           Groq (playai-tts / Orpheus); Hindi tries ElevenLabs then Hugging Face MMS, and never
-           Groq — those are English-only models that would "read" Devanagari as mangled
-           phonetics rather than failing. Degrades to silent / a stub placeholder with a note
-           naming exactly which key would fix it.
+  - TTS:   a per-LANGUAGE engine chain (services/languages.py). English tries ElevenLabs ->
+           Gemini -> Groq; Hindi tries ElevenLabs -> Gemini and never Groq, whose playai-tts /
+           Orpheus are English-only models that would "read" Devanagari as mangled phonetics
+           rather than failing. Degrades to silent / a stub placeholder with a note naming
+           exactly which key would fix it.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from app.core.config import get_settings
 from app.core.logging import logger
 from app.providers.base import FatalProviderError
 from app.providers.registry import get_provider_registry
-from app.services import elevenlabs_tts, hf_tts
+from app.services import elevenlabs_tts, google_tts
 from app.services.artifacts import get_artifact_service
 from app.services.languages import DEFAULT_LANGUAGE, Language, get_language
 from app.services.usage import record_media_call
@@ -177,7 +177,7 @@ class MediaService:
         failures: list[str] = []
         engines = {
             "elevenlabs": self._tts_elevenlabs,
-            "hf": self._tts_hf,
+            "google": self._tts_google,
             "groq": self._tts_groq,
         }
         for name in lang.tts_chain:
@@ -205,24 +205,21 @@ class MediaService:
         rel = self._write_audio(project_id, data, elevenlabs_tts.AUDIO_EXT)
         return rel, f"{lang.name} voiceover via {elevenlabs_tts.describe(lang.code)}."
 
-    async def _tts_hf(self, text: str, project_id: str, lang: Language, failures: list[str]):
-        """Hugging Face MMS — the free non-English fallback. Real speech, audibly synthetic."""
-        if not hf_tts.is_configured(lang.code):
+    async def _tts_google(self, text: str, project_id: str, lang: Language, failures: list[str]):
+        """Gemini TTS — the FREE multilingual engine, on the Google AI key agents already use."""
+        if not google_tts.is_configured():
             return None
         try:
-            data = await hf_tts.synthesize(text, language=lang.code)
+            data = await google_tts.synthesize(text, language=lang.code)
         except Exception as exc:  # noqa: BLE001
-            failures.append(f"huggingface: {str(exc)[:120]}")
-            logger.warning("HF MMS TTS failed ({}); trying the next engine", str(exc)[:160])
+            failures.append(f"google: {str(exc)[:120]}")
+            logger.warning("Gemini TTS failed ({}); trying the next engine", str(exc)[:160])
             return None
         if not data:
-            failures.append("huggingface: returned no audio")
+            failures.append("google: returned no audio")
             return None
-        rel = self._write_audio(project_id, data, hf_tts.audio_ext(data))
-        return rel, (
-            f"{lang.name} voiceover via {hf_tts.describe(lang.code)} (free tier — "
-            "add an ElevenLabs key in Integrations for a natural-sounding voice)."
-        )
+        rel = self._write_audio(project_id, data, google_tts.AUDIO_EXT)
+        return rel, f"{lang.name} voiceover via {google_tts.describe(lang.code)}."
 
     async def _tts_groq(self, text: str, project_id: str, lang: Language, failures: list[str]):
         """Groq speech models (free tier), trying each model+voice pair in turn. English only."""
@@ -273,7 +270,7 @@ class MediaService:
         """
         options = {
             "elevenlabs": "an ElevenLabs key (natural-sounding)",
-            "hf": "a Hugging Face key (free, more robotic)",
+            "google": "a Google AI Studio key (free)",
             "groq": "a Groq key (free)",
         }
         fix = " or ".join(options[e] for e in lang.tts_chain if e in options)

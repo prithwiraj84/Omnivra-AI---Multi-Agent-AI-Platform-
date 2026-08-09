@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     # Optional per-language narrator, so an English and a Hindi voice can coexist instead of
     # one setting being re-pointed every time the content language changes.
     elevenlabs_voice_id_hi: str | None = None
+    # Gemini TTS — the FREE multilingual voice, on the Google AI Studio key. Unset model =
+    # try the known preview models in order (accounts differ in which they can reach).
+    google_tts_model: str | None = None
+    google_tts_voice: str = "Kore"
+    google_tts_voice_hi: str | None = None
     elevenlabs_model: str = "eleven_multilingual_v2"
 
     huggingface_api_key: str | None = None

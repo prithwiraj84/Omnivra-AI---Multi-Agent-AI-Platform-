@@ -196,10 +196,11 @@ def test_elevenlabs_is_preferred_when_configured(monkeypatch):
     """ElevenLabs is what actually sounds human, so it must win over the free Groq voices."""
     import asyncio
 
-    from app.services import elevenlabs_tts, media as media_mod
+    from app.services import elevenlabs_tts, google_tts, media as media_mod
 
     used: list = []
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: True)
+    monkeypatch.setattr(google_tts, "is_configured", lambda: False)
 
     async def fake_synth(text, *, language="en"):  # noqa: ANN001
         used.append(("elevenlabs", text, language))
@@ -219,10 +220,11 @@ def test_elevenlabs_failure_falls_back_to_groq(monkeypatch):
     """A bad/expired ElevenLabs key must not leave the reel silent — Groq still covers it."""
     import asyncio
 
-    from app.services import elevenlabs_tts, media as media_mod
+    from app.services import elevenlabs_tts, google_tts, media as media_mod
 
     used: list = []
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: True)
+    monkeypatch.setattr(google_tts, "is_configured", lambda: False)
 
     async def boom(text, *, language="en"):  # noqa: ANN001
         used.append(("elevenlabs", text, language))
@@ -241,7 +243,7 @@ def test_elevenlabs_unconfigured_is_a_no_op(monkeypatch):
     """With no key it must be invisible — Groq stays the path, no behaviour change."""
     import asyncio
 
-    from app.services import elevenlabs_tts, media as media_mod
+    from app.services import elevenlabs_tts, google_tts, media as media_mod
 
     used: list = []
     monkeypatch.setattr(elevenlabs_tts, "is_configured", lambda: False)

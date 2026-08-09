@@ -25,8 +25,11 @@ for _k in (
     "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_DB_URL", "SUPABASE_DB_PASSWORD",
     # per-user isolation OFF by default -> single-admin open mode (current_user == admin)
     "SUPABASE_JWT_SECRET",
-    # LLM / media providers (unset -> deterministic stub responses)
+    # LLM / media providers (unset -> deterministic stub responses).
+    # ELEVENLABS_API_KEY belongs here for a second reason: unlike the others it is METERED per
+    # character, so a real key leaking into the suite silently spends the developer's quota.
     "GOOGLE_AI_STUDIO_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "HUGGINGFACE_API_KEY",
+    "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "ELEVENLABS_VOICE_ID_HI",
     # social pipeline (unset -> stub publish / no b-roll / no voiceover)
     "PEXELS_API_KEY", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN",
     "INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_USER_ID", "FACEBOOK_PAGE_TOKEN", "FACEBOOK_PAGE_ID",

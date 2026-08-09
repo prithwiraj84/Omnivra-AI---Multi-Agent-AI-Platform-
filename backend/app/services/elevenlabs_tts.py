@@ -72,23 +72,52 @@ def _configured_voice_for(language: str) -> str:
     return ((per_language or "").strip()) or ((s.elevenlabs_voice_id or "").strip())
 
 
-async def _resolve_voice_id(client: httpx.AsyncClient, key: str, language: str) -> str | None:
-    """The configured voice for this language, or the account's first available one.
+# Voice categories a FREE account can actually synthesize with, best first. Voices added from
+# the Voice Library are rejected with 402 paid_plan_required ("Free users cannot use library
+# voices"), so picking "the account's first voice" blindly breaks every free account whose
+# library list happens to sort first.
+_USABLE_CATEGORIES: tuple[str, ...] = ("premade", "cloned", "generated")
+# Last-resort global defaults, for keys that can't list voices at all (a permission-scoped key
+# 401s on /v1/voices while still being able to synthesize). Several are needed, not one: which
+# premade voices a free plan may use has narrowed over time — Rachel now 402s on free accounts
+# while Adam still works — so the list is ordered by what verified free-tier access most
+# recently, and the walk stops at the first that returns audio.
+_DEFAULT_VOICE_IDS: tuple[str, ...] = (
+    "pNInz6obpgDQGcFmaJgB",  # Adam
+    "EXAVITQu4vr4xnSDxMaL",  # Bella
+    "ErXwobaYiN019PkySvjV",  # Antoni
+    "TxGEqnHWrfWFTfGW9XjX",  # Josh
+    "21m00Tcm4TlvDq8ikWAM",  # Rachel
+)
+# Cap the walk: each rejected voice is a wasted round trip, and a scene of narration should not
+# spend 30 seconds discovering the account has nothing usable.
+_MAX_VOICE_ATTEMPTS = 6
 
-    Falling back to whatever the account actually has means TTS works out of the box instead of
-    failing on a hardcoded voice id the user may not own.
+
+async def _voice_candidates(client: httpx.AsyncClient, key: str, language: str) -> list[str]:
+    """Voice ids to try, best first: the configured one, then free-usable account voices.
+
+    Returns a LIST rather than one id because usability is only knowable by trying: a voice can
+    be present on the account and still 402 on synthesis. The caller walks the list.
     """
+    out: list[str] = []
     configured = _configured_voice_for(language)
     if configured:
-        return configured
+        out.append(configured)
     try:
         resp = await client.get(f"{_API}/voices", headers={"xi-api-key": key})
         resp.raise_for_status()
         voices = resp.json().get("voices") or []
-        return str(voices[0]["voice_id"]) if voices else None
-    except Exception as exc:  # noqa: BLE001 - treated as "no voice available"
+        # Group by category so premade (always free-usable) is tried before anything else.
+        for category in _USABLE_CATEGORIES:
+            for v in voices:
+                vid = str(v.get("voice_id") or "")
+                if vid and v.get("category") == category and vid not in out:
+                    out.append(vid)
+    except Exception as exc:  # noqa: BLE001 - fall through to the hardcoded defaults
         logger.warning("ElevenLabs: could not list voices ({})", str(exc)[:160])
-        return None
+    out += [v for v in _DEFAULT_VOICE_IDS if v not in out]
+    return out[:_MAX_VOICE_ATTEMPTS]
 
 
 @with_provider_retry(max_attempts=2)
@@ -114,24 +143,36 @@ async def synthesize(text: str, *, language: str = "en") -> bytes:
     if model in _LANGUAGE_CODE_MODELS:
         body["language_code"] = lang.code
 
+    blocked: list[str] = []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        voice_id = await _resolve_voice_id(client, key, lang.code)
-        if not voice_id:
+        candidates = await _voice_candidates(client, key, lang.code)
+        if not candidates:
             raise FatalProviderError("elevenlabs: no voice available on this account")
-        resp = await client.post(
-            f"{_API}/text-to-speech/{voice_id}",
-            headers={"xi-api-key": key, "Content-Type": "application/json"},
-            params={"output_format": _OUTPUT_FORMAT},
-            json=body,
-        )
+        for voice_id in candidates:
+            resp = await client.post(
+                f"{_API}/text-to-speech/{voice_id}",
+                headers={"xi-api-key": key, "Content-Type": "application/json"},
+                params={"output_format": _OUTPUT_FORMAT},
+                json=body,
+            )
+            if resp.status_code == 402:
+                # This specific voice needs a paid plan (library/professional voices do on the
+                # free tier). Another voice on the same account may well work, so roll on.
+                blocked.append(voice_id)
+                logger.info("ElevenLabs: voice {} needs a paid plan; trying the next one", voice_id)
+                continue
+            if resp.status_code == 429:
+                raise RateLimitError(resp.text[:200])
+            if 500 <= resp.status_code < 600:
+                raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
+            if resp.status_code >= 400:
+                raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
+            return resp.content
 
-    if resp.status_code == 429:
-        raise RateLimitError(resp.text[:200])
-    if 500 <= resp.status_code < 600:
-        raise TransientProviderError(f"{resp.status_code}: {resp.text[:120]}")
-    if resp.status_code >= 400:
-        raise FatalProviderError(f"{resp.status_code}: {resp.text[:200]}")
-    return resp.content
+    raise FatalProviderError(
+        f"402: every available voice requires a paid plan (tried {len(blocked)}). "
+        "Pick a default/premade voice on elevenlabs.io and set ELEVENLABS_VOICE_ID to it."
+    )
 
 
 def describe(language: str = "en") -> str:

@@ -37,12 +37,13 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
     icon: Sparkles,
     accent: 'cyan',
     category: 'llm',
-    detail: 'Gemini models — used by the CEO and several agents',
+    detail: 'Gemini models for agents + free multilingual voiceover',
     docUrl: 'https://aistudio.google.com/app/apikey',
     steps: [
       'Sign in at aistudio.google.com with a Google account.',
       'Open “Get API key” → “Create API key”.',
       'Copy the key (starts with AIza…) and paste it here.',
+      'Also powers free Gemini TTS — the only free voice that speaks Hindi.',
     ],
   },
   {
@@ -80,7 +81,7 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
     icon: Plug,
     accent: 'blue',
     category: 'llm',
-    detail: 'FLUX images, speech-to-text + free Hindi narration',
+    detail: 'FLUX image generation + speech-to-text',
     docUrl: 'https://huggingface.co/settings/tokens',
     steps: [
       'Sign in at huggingface.co.',
@@ -114,7 +115,7 @@ const KEY_PROVIDERS: ProviderKeyMeta[] = [
       'Create an account at elevenlabs.io.',
       'Open Settings → API Keys → “Create API key”.',
       'Paste it here — reels will use it instead of the free Groq voice.',
-      'Required for natural Hindi narration (Groq’s voices are English-only).',
+      'Optional upgrade over the free Gemini voice, in English and Hindi.',
       'Optional: set ELEVENLABS_VOICE_ID / ELEVENLABS_VOICE_ID_HI to pin voices.',
     ],
   },

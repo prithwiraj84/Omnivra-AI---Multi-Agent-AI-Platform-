@@ -69,14 +69,14 @@ All three require auth when `AUTH_ENABLED=true` (open in dev). Responses are alw
 
 ## Voice quality for reels
 
-Reel narration uses whichever speech engine is connected, in this order:
+Reel narration walks a chain of speech engines and takes the first that produces audio:
 
-1. **ElevenLabs** — set `ELEVENLABS_API_KEY` (or add it in Integrations). This is the one that
-   sounds like a real person; use it if narration quality matters.
-2. **Groq** — the free option (`playai-tts` / Orpheus). Fast and free, noticeably more synthetic.
+1. **ElevenLabs** — `ELEVENLABS_API_KEY`. Closest to a real person; optional and metered.
+2. **Google Gemini TTS** — no extra key, it reuses `GOOGLE_AI_STUDIO_API_KEY`. Free, natural,
+   and **multilingual** — this is what makes Hindi work at all.
+3. **Groq** — `playai-tts` / Orpheus. Free and fast, more synthetic, **English only**.
 
-If ElevenLabs is configured but fails (bad key, quota), the reel automatically falls back to Groq
-rather than rendering silent. `ELEVENLABS_VOICE_ID` is optional — leave it blank and the first
+Each step falls through on failure rather than rendering silent. `ELEVENLABS_VOICE_ID` is optional — leave it blank and the first
 voice on your account is used; set it to pin a specific one. `ELEVENLABS_MODEL` defaults to
 `eleven_multilingual_v2`.
 
@@ -89,10 +89,19 @@ routes there:
 
 | Language | Engine order |
 |---|---|
-| English | ElevenLabs → Groq |
-| हिन्दी | ElevenLabs → Hugging Face MMS (`facebook/mms-tts-hin`) |
+| English | ElevenLabs → Gemini → Groq |
+| हिन्दी | ElevenLabs → Gemini |
 
-So a Hindi reel needs **either** an ElevenLabs key (natural) **or** a Hugging Face key (free,
-audibly more robotic). With neither, the reel still drafts and renders — silently — and the
-render note names the key that would fix it. Set `ELEVENLABS_VOICE_ID_HI` to give Hindi its own
-narrator while `ELEVENLABS_VOICE_ID` stays your English one.
+So a Hindi reel works out of the box on the **Google AI key you already have** for the agents —
+no paid account needed. With no Google or ElevenLabs key the reel still drafts and renders,
+silently, and the render note names the key that would fix it.
+
+> **Hugging Face is not in the chain.** Its serverless tier no longer hosts *any* text-to-speech
+> model — `facebook/mms-tts-hin` and every other TTS model now return
+> `Model not supported by provider hf-inference`. The HF key remains image-generation only.
+
+**Free-plan ElevenLabs gotcha:** voices added from the Voice Library are rejected with
+`402 paid_plan_required` ("Free users cannot use library voices"). Omnivra now walks the
+account's *premade* voices and the global defaults until one works, so this recovers by itself —
+but if you pinned `ELEVENLABS_VOICE_ID` to a library voice, clear it. Set
+`ELEVENLABS_VOICE_ID_HI` / `GOOGLE_TTS_VOICE_HI` to give Hindi its own narrator.

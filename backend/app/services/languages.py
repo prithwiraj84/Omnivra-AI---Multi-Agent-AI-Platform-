@@ -36,7 +36,8 @@ class Language:
     # --- speech ---
     # Engines to try IN ORDER. 'groq' is English-only (playai-tts / Orpheus are English models),
     # so it must never appear for another language: it would happily "speak" transliterated
-    # nonsense instead of failing, which is worse than no audio.
+    # nonsense instead of failing, which is worse than no audio. 'google' (Gemini TTS) is the
+    # free multilingual engine and runs on the Google AI key the LLM agents already use.
     tts_chain: tuple[str, ...]
     elevenlabs_needs_multilingual: bool  # force a multilingual model regardless of settings
 
@@ -62,7 +63,7 @@ ENGLISH = Language(
         "Write every 'voiceover' and 'onScreenText' in natural, conversational ENGLISH."
     ),
     words_per_second=2.4,
-    tts_chain=("elevenlabs", "groq"),
+    tts_chain=("elevenlabs", "google", "groq"),
     elevenlabs_needs_multilingual=False,
     fallback_beats=(
         ("Hook: stop the scroll", "Here's how {topic} changes everything."),
@@ -91,8 +92,9 @@ HINDI = Language(
     # Overestimating here is what makes narration run past the end of its scene.
     words_per_second=2.0,
     # NO Groq: playai-tts and Orpheus are English-only models. ElevenLabs multilingual is the
-    # good path; Hugging Face MMS is the free (robotic but genuinely Hindi) fallback.
-    tts_chain=("elevenlabs", "hf"),
+    # premium path; Gemini TTS is the free one and speaks Hindi natively. (Hugging Face is NOT
+    # here: its serverless tier no longer hosts ANY text-to-speech model.)
+    tts_chain=("elevenlabs", "google"),
     elevenlabs_needs_multilingual=True,
     fallback_beats=(
         ("रुकिए, ये देखिए", "{topic} — ये आपके काम करने का तरीका पूरी तरह बदल देगा।"),

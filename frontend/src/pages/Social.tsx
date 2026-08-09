@@ -39,7 +39,7 @@ const POST_TARGETS = ['facebook', 'linkedin', 'twitter']
  */
 const LANGUAGES: { code: ContentLanguage; label: string; hint: string }[] = [
   { code: 'en', label: 'English', hint: 'Script and voiceover in English' },
-  { code: 'hi', label: 'हिन्दी', hint: 'Script and voiceover in Hindi — needs an ElevenLabs or Hugging Face key' },
+  { code: 'hi', label: 'हिन्दी', hint: 'Script and voiceover in Hindi — uses your Google AI key (free) or ElevenLabs' },
 ]
 const LANGUAGE_LABEL: Record<string, string> = { en: 'English', hi: 'हिन्दी' }
 const TARGET_LABEL: Record<string, string> = {
@@ -439,8 +439,8 @@ export function Social() {
 
             {language !== 'en' && kind === 'reel' && (
               <p className="text-[11px] text-[#71717a]">
-                Hindi narration uses ElevenLabs (natural) or Hugging Face (free, more robotic) — Groq’s
-                voices are English-only. Add a key in Integrations if the reel renders silent.
+                Hindi narration uses your Google AI Studio key (free) or ElevenLabs — Groq’s voices are
+                English-only. Add one in Integrations if the reel renders silent.
               </p>
             )}
 
