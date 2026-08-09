@@ -62,3 +62,10 @@ def configure_logging(settings: "Settings") -> None:
     # httpx logs the full request URL at INFO; for the Google AI provider that URL
     # carries ?key=<API_KEY>. Raise its level so the secret never reaches a sink.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # Re-attach the user-visible Error Log capture: the logger.remove() above wiped it, and
+    # this function is the only place that happens — owning the reinstall here means capture
+    # survives every logging reconfiguration. Imported lazily to keep this module import-light.
+    from app.services.error_log import install as _install_error_capture
+
+    _install_error_capture()

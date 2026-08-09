@@ -21,6 +21,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  TriangleAlert,
   Cpu,
   Workflow,
 } from 'lucide-react'
@@ -60,6 +61,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: 'Memory', to: '/memory', icon: Brain },
       { label: 'Logs', to: '/logs', icon: ScrollText },
+      { label: 'Error Log', to: '/errors', icon: TriangleAlert, accent: 'pink' },
       { label: 'Settings', to: '/settings', icon: Settings },
       { label: 'Integrations', to: '/integrations', icon: Plug },
       { label: 'Billing', to: '/billing', icon: CreditCard },

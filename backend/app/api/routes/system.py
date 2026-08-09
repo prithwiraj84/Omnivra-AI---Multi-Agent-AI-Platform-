@@ -187,6 +187,29 @@ def clear_social_connector(
     return _single_connector(connector_id, current)
 
 
+# --- Error Log -------------------------------------------------------------
+@router.get("/errors")
+def list_error_log(limit: int = 200, current: str = Depends(current_user)) -> dict[str, object]:
+    """The user-visible Error Log: every WARNING+ the app produced, classified and coalesced.
+
+    Captured at the loguru sink, so provider failures, rate limits, TTS misses, render errors
+    and unhandled crashes all land here without their call sites knowing about it. Scoped to
+    the current user in per-user mode; single-admin/open mode sees everything (including
+    records from background/system contexts).
+    """
+    from app.services.error_log import list_errors
+
+    return list_errors(current, limit=max(1, min(500, limit)), all_owners=not per_user_mode())
+
+
+@router.delete("/errors")
+def clear_error_log(current: str = Depends(current_user)) -> dict[str, int]:
+    """Clear the current user's error records (everything, in open mode)."""
+    from app.services.error_log import clear
+
+    return {"cleared": clear(current, all_owners=not per_user_mode())}
+
+
 @router.get("/media-token")
 def media_token(current: str = Depends(current_user)) -> dict[str, object]:
     """A short-lived, MEDIA-SCOPED token for browser-native resource loads.

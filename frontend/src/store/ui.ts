@@ -13,11 +13,24 @@ interface UIState {
   rightRailOpen: boolean
   /** Live WebSocket connection status (drives the topbar live indicator). */
   realtimeStatus: RealtimeStatus
+  /** When the Error Log page was last opened (ms epoch) — the sidebar badge counts newer records. */
+  errorsSeenAt: number
   toggleSidebar: () => void
   setSidebarCollapsed: (v: boolean) => void
   setCommandOpen: (v: boolean) => void
   toggleRightRail: () => void
   setRealtimeStatus: (s: RealtimeStatus) => void
+  markErrorsSeen: () => void
+}
+
+// Persisted so a page refresh doesn't resurrect an already-dismissed badge.
+const SEEN_KEY = 'omnivra.errorsSeenAt'
+const initialSeen = (): number => {
+  try {
+    return Number(localStorage.getItem(SEEN_KEY)) || 0
+  } catch {
+    return 0
+  }
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -25,9 +38,19 @@ export const useUIStore = create<UIState>((set) => ({
   commandOpen: false,
   rightRailOpen: true,
   realtimeStatus: 'idle',
+  errorsSeenAt: initialSeen(),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
   setCommandOpen: (v) => set({ commandOpen: v }),
   toggleRightRail: () => set((s) => ({ rightRailOpen: !s.rightRailOpen })),
   setRealtimeStatus: (s) => set({ realtimeStatus: s }),
+  markErrorsSeen: () => {
+    const now = Date.now()
+    try {
+      localStorage.setItem(SEEN_KEY, String(now))
+    } catch {
+      /* private mode — session-only badge is fine */
+    }
+    set({ errorsSeenAt: now })
+  },
 }))

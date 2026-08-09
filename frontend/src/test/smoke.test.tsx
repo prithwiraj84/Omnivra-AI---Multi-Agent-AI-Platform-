@@ -229,4 +229,14 @@ describe('App shell', () => {
     // Left the dashboard -> its greeting is gone (proves the button is wired to a route).
     expect(screen.queryByText(greeting)).toBeNull()
   })
+
+
+  it('renders the Error Log on /errors', () => {
+    // Offline (jsdom) the query never resolves — the page must still mount with its filters,
+    // search and the all-clear empty state, and the sidebar must link to it.
+    renderApp('/errors')
+    expect(screen.getAllByText(/Error Log/i).length).toBeGreaterThan(0)
+    expect(screen.getByLabelText(/Search errors/i)).toBeTruthy()
+    expect(screen.getByRole('group', { name: /Level filter/i })).toBeTruthy()
+  })
 })

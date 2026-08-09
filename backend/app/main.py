@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Phase 1: logging + workspace sandbox only. Provider clients, Supabase, and
     Redis are wired here in later phases (see manifest) and stashed on app.state.
     """
-    configure_logging(settings)
+    configure_logging(settings)  # also (re)installs the Error Log capture sink
     logger.info("Starting {} v{} ({})", settings.app_name, __version__, settings.app_env)
 
     # Ensure the AI artifact sandbox exists. Agents may ONLY write under here, and
@@ -99,6 +99,18 @@ app.add_middleware(
 
 # Per-client request timestamps for the opt-in rate limiter (in-memory; per process).
 _rate_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+
+@app.middleware("http")
+async def unhandled_error_middleware(request: Request, call_next):
+    """Log any unhandled exception through loguru — which feeds the user-visible Error Log —
+    then re-raise so the response path (500) is exactly what it was before. Without this, a
+    crash only reaches uvicorn's stdlib logging and never the in-app log."""
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception("Unhandled error on {} {}", request.method, request.url.path)
+        raise
 
 
 @app.middleware("http")

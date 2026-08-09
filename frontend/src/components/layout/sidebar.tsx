@@ -6,6 +6,7 @@ import { accentClasses } from '@/lib/accents'
 import { navGroups } from '@/config/navigation'
 import { useUIStore } from '@/store/ui'
 import { useAwaitingApprovals } from '@/hooks/useApprovals'
+import { useErrorBadge } from '@/hooks/useErrorLog'
 import { BrandLogo } from './brand-logo'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -102,6 +103,8 @@ export function Sidebar() {
   // Live Approvals badge from the real awaiting-runs set (replaces the old hard-coded "7").
   const { data: awaiting } = useAwaitingApprovals()
   const awaitingCount = awaiting?.length ?? 0
+  // Errors captured since the page was last opened — clears on visit, not on a timer.
+  const errorCount = useErrorBadge()
 
   return (
     <aside
@@ -138,7 +141,9 @@ export function Sidebar() {
                   item={
                     item.to === '/approvals' && awaitingCount > 0
                       ? { ...item, badge: awaitingCount }  // live count, only when there are real approvals
-                      : item
+                      : item.to === '/errors' && errorCount > 0
+                        ? { ...item, badge: errorCount } // unseen errors since the page was last opened
+                        : item
                   }
                   active={isActivePath(pathname, item.to)}
                   collapsed={collapsed}

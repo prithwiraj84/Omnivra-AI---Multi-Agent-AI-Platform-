@@ -22,6 +22,7 @@ import { Agents } from '@/pages/Agents'
 import { Workflows } from '@/pages/Workflows'
 import { Approvals } from '@/pages/Approvals'
 import { Logs } from '@/pages/Logs'
+import { ErrorLog } from '@/pages/ErrorLog'
 import { Integrations } from '@/pages/Integrations'
 import { Billing } from '@/pages/Billing'
 import { Department } from '@/pages/departments/Department'
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/knowledge" element={<KnowledgeBase />} />
         <Route path="/memory" element={<Memory />} />
         <Route path="/logs" element={<Logs />} />
+        <Route path="/errors" element={<ErrorLog />} />
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/settings" element={<Settings />} />

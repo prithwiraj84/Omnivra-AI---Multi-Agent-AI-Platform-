@@ -90,6 +90,11 @@ export function useWebSocket() {
           }
           break
         }
+        case 'error_log': {
+          // A new error was captured server-side — refresh the log (and the sidebar badge) now.
+          queryClient.invalidateQueries({ queryKey: ['errorLog'] })
+          break
+        }
         case 'agent_activity': {
           // An agent started or finished an LLM call — including Document/Social Studio work,
           // which has no workflow behind it. Refresh now so the roster flips to Active while the
