@@ -169,3 +169,57 @@ def test_run_enforces_the_timeout(monkeypatch) -> None:
         assert body["timedOut"] is True
         assert body["ok"] is False
         assert "time limit" in body["note"]
+
+
+# --- lenient extraction (cp-0075): models rarely obey the name= format --------------------
+# Whole runs materialized as ONE prose .md ("No runnable backend/frontend detected") because
+# extraction only accepted the exact instructed format. These pin the real-world shapes.
+
+
+def test_extracts_path_from_heading_above_the_fence() -> None:
+    from app.services.artifacts import extract_code_files
+
+    out = extract_code_files("**src/App.jsx**\n```jsx\nexport default 1\n```")
+    assert out == [("src/App.jsx", "export default 1\n")]
+    out = extract_code_files("### `styles/site.css`\n```css\nbody{}\n```")
+    assert out == [("styles/site.css", "body{}\n")]
+    out = extract_code_files("File: config/settings.py\n```python\nDEBUG = False\n```")
+    assert out == [("config/settings.py", "DEBUG = False\n")]
+
+
+def test_extracts_path_from_info_line_or_first_comment() -> None:
+    from app.services.artifacts import extract_code_files
+
+    assert extract_code_files("```src/api.js\nexport const x = 1\n```") == [("src/api.js", "export const x = 1\n")]
+    out = extract_code_files("```python\n# utils/helpers.py\ndef helper(): pass\n```")
+    assert out[0][0] == "utils/helpers.py"
+
+
+def test_lone_html_page_becomes_index_html() -> None:
+    """A full page is self-evidently a file — naming it makes the run instantly previewable."""
+    from app.services.artifacts import extract_code_files
+
+    out = extract_code_files("```html\n<html><body>hi</body></html>\n```")
+    assert out == [("index.html", "<html><body>hi</body></html>\n")]
+
+
+def test_pathless_snippets_and_prose_produce_no_files() -> None:
+    """Leniency must not invent files: an unnamed python block may be a snippet, and a phantom
+    main.py would create confidently broken 'runnable' targets."""
+    from app.services.artifacts import extract_code_files
+
+    assert extract_code_files("```python\nprint('just a snippet')\n```") == []
+    assert extract_code_files("A plain essay with `inline code` and no fences.") == []
+
+
+def test_duplicate_paths_are_written_once() -> None:
+    from app.services.artifacts import extract_code_files
+
+    two = "```python name=a.py\nfirst\n```\n\n```python name=a.py\nsecond\n```"
+    assert extract_code_files(two) == [("a.py", "first\n")]
+
+
+def test_escaping_paths_are_still_rejected() -> None:
+    from app.services.artifacts import extract_code_files
+
+    assert extract_code_files("```python name=../../evil.py\nx\n```") == []

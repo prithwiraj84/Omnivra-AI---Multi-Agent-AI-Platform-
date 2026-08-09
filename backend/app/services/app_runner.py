@@ -393,15 +393,17 @@ def discover_targets(project_id: str | None, root_rel: str) -> list[dict]:
         rel = d.resolve().relative_to(root).as_posix()
         if rel in seen:
             continue
-        # Python target: a requirements/pyproject + a runnable entry file.
-        if (d / "requirements.txt").exists() or (d / "pyproject.toml").exists():
-            entry = next((e for e in _PY_ENTRIES if (d / e).exists()), None)
-            if entry:
-                fw, var = _detect_python(d / entry)
-                targets.append({"kind": "python", "rel": rel, "name": d.name, "entry": entry,
-                                "framework": fw, "app_var": var})
-                seen.add(rel)
-                continue
+        # Python target: a runnable entry file. A requirements/pyproject is NOT required —
+        # generated backends frequently ship main.py with no requirements.txt, and demanding
+        # one made real apps read "No runnable backend/frontend detected". Setup self-heals:
+        # _ensure_venv pip-installs whatever the code imports even with no requirements file.
+        entry = next((e for e in _PY_ENTRIES if (d / e).exists()), None)
+        if entry:
+            fw, var = _detect_python(d / entry)
+            targets.append({"kind": "python", "rel": rel, "name": d.name, "entry": entry,
+                            "framework": fw, "app_var": var})
+            seen.add(rel)
+            continue
         # Node target: a package.json. Classify it so we launch it correctly (vite/next/cra/server).
         if (d / "package.json").exists():
             targets.append({"kind": "node", "rel": rel, "name": d.name, "entry": "package.json",
@@ -773,7 +775,17 @@ def app_status(project_id: str | None, root_rel: str) -> dict:
         preview = preview_rel(pid, root_rel)
     except Exception:  # noqa: BLE001
         preview = None
-    return {"dir": root_rel, "targets": out, "note": "", "preview_path": preview}
+    # Nothing runnable AND nothing previewable: say what actually happened — the RUN produced
+    # only prose/docs (the historical failure mode this codebase has now fixed twice: agents
+    # answering in essays, and app teams missing a frontend engineer). Regenerating is the fix.
+    note = ""
+    if not out and not preview:
+        note = (
+            "This run produced no app files (only documents/reports). Re-run the task — "
+            "app builds now always include a frontend engineer and code files are extracted "
+            "from more answer formats."
+        )
+    return {"dir": root_rel, "targets": out, "note": note, "preview_path": preview}
 
 
 def stop_app(project_id: str | None, run_key: str) -> dict:
