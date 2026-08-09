@@ -20,13 +20,18 @@ export function useDashboard() {
     initialData: fallbackDashboard,
     initialDataUpdatedAt: 0, // fallback is stale on arrival -> fetch real data immediately
     staleTime: 3_000,
-    // Poll FAST (3s) while a run is active so live agent working/idle transitions show, else every 15s.
+    // Poll FAST (3s) while work is visibly in flight, and still reasonably fast (6s) when it
+    // isn't. The idle interval matters more than it looks: the "active" test below can only see
+    // work the PREVIOUS response reported, so a long idle interval delays the very transition
+    // it is watching for — an agent could start and finish a document inside one 15s gap and
+    // never once appear as working. The WebSocket 'agent_activity' event (useWebSocket) is the
+    // real-time path; this is the floor for when the socket is down or unsupported.
     refetchInterval: (query) => {
       const d = query.state.data
       const active =
         !!d?.agents?.some((a) => a.status === 'working' || a.status === 'needs_approval') ||
         !!d?.workflows?.some((w) => w.status === 'In Progress' || w.status === 'Review')
-      return active ? 3_000 : 15_000
+      return active ? 3_000 : 6_000
     },
     retry: 1,
   })

@@ -83,13 +83,60 @@ function TargetRow({ t, dir }: { t: AppTarget; dir: string }) {
   )
 }
 
+/** Statuses a target can no longer leave on its own — nothing more is coming. */
+const TERMINAL: AppTargetStatus[] = ['exited', 'error', 'stopped']
+
+/**
+ * The target the "Run" tab should land on: the FRONTEND if the app has one, because "run the
+ * app" means the website, not the API root it talks to. Falls back to whatever is serving
+ * (a backend-only project opens its own root). Exported for tests.
+ */
+export function openableTarget(targets: AppTarget[]): AppTarget | undefined {
+  const live = targets.filter((t) => t.status === 'running' && !!t.url)
+  return live.find((t) => t.kind === 'node') ?? live[0]
+}
+
+/**
+ * True when nothing is serving and nothing is still working towards it, so a tab waiting on
+ * this app will never get a URL. 'idle' is deliberately NOT terminal — it is also the state
+ * before the run request has been answered, and treating it as terminal would abandon the tab
+ * a few milliseconds after the click. Exported for tests.
+ */
+export function runSettled(targets: AppTarget[]): boolean {
+  return targets.length > 0 && targets.every((t) => TERMINAL.includes(t.status))
+}
+
+/** The placeholder document shown in the new tab while the app boots. */
+function bootingDoc(appName: string): string {
+  const safe = appName.replace(/[<>&]/g, '')
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>Starting ${safe}…</title>
+<style>
+ :root{color-scheme:dark}
+ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#09090b;
+      color:#e4e4e7;font:400 14px/1.6 ui-sans-serif,system-ui,-apple-system,sans-serif}
+ .w{text-align:center;padding:2rem;max-width:34rem}
+ .s{width:34px;height:34px;margin:0 auto 1.25rem;border-radius:50%;
+    border:2px solid rgba(255,255,255,.12);border-top-color:#22d3ee;animation:r .8s linear infinite}
+ @keyframes r{to{transform:rotate(360deg)}}
+ h1{margin:0 0 .5rem;font-size:1rem;font-weight:600;color:#fafafa}
+ p{margin:0;color:#a1a1aa;font-size:13px}
+</style></head><body><div class="w">
+ <div class="s"></div>
+ <h1>Starting ${safe}…</h1>
+ <p id="msg">Installing dependencies and launching the server. This tab opens the app automatically.</p>
+</div></body></html>`
+}
+
 function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
   const projectId = useProjectStore((s) => s.activeProjectId)
   const { data } = useAppStatus(dir)
   const run = useRunApp()
   const stop = useStopApp(dir)
   const [showLogs, setShowLogs] = useState(false)
+  const [popupBlocked, setPopupBlocked] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  // The tab opened by the Run click, waiting to be pointed at the app once it is serving.
+  const pendingTab = useRef<Window | null>(null)
 
   const targets = data?.targets ?? []
   const anyActive = targets.some((t) => ['installing', 'starting', 'running'].includes(t.status))
@@ -106,6 +153,67 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
     if (logsOpen && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [logs, logsOpen])
 
+  /** Replace the placeholder tab's message when the app isn't going to come up. */
+  const tellTab = (message: string) => {
+    const win = pendingTab.current
+    if (!win || win.closed) return
+    try {
+      const el = win.document.getElementById('msg')
+      if (el) el.textContent = message
+      const spinner = win.document.querySelector('.s') as HTMLElement | null
+      if (spinner) spinner.style.animation = 'none'
+    } catch {
+      /* the tab navigated away or was closed — nothing to update */
+    }
+  }
+
+  // Send the tab opened on click to the app as soon as a target is actually serving. This is why
+  // the window is opened in the click handler and merely REDIRECTED here: window.open() from an
+  // async callback (the status poll) is not a user gesture, so browsers block it as a popup.
+  useEffect(() => {
+    const win = pendingTab.current
+    if (!win) return
+    if (win.closed) {
+      pendingTab.current = null
+      return
+    }
+    const target = openableTarget(targets)
+    if (target?.url) {
+      win.location.replace(target.url)
+      pendingTab.current = null
+      return
+    }
+    if (run.isPending) return
+    if (runSettled(targets)) {
+      tellTab('The app stopped before it started serving. Check the logs in Omnivra → Workspace.')
+      pendingTab.current = null
+    } else if (targets.length === 0 && data?.note) {
+      tellTab(data.note)
+      pendingTab.current = null
+    }
+  }, [targets, run.isPending, data?.note])
+
+  const onRun = () => {
+    // Open the tab HERE, synchronously inside the click, so it counts as a user gesture.
+    if (!pendingTab.current || pendingTab.current.closed) {
+      const win = window.open('', '_blank')
+      if (win) {
+        try {
+          win.document.write(bootingDoc(name))
+          win.document.close()
+        } catch {
+          /* a hardened browser may refuse the write; the redirect below still works */
+        }
+        pendingTab.current = win
+        setPopupBlocked(false)
+      } else {
+        // Blocked: don't fail the run — it still starts, and the Open link appears when ready.
+        setPopupBlocked(true)
+      }
+    }
+    run.mutate(dir)
+  }
+
   return (
     <GlassCard className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -119,8 +227,8 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
             type="button"
             size="sm"
             disabled={setting}
-            onClick={() => run.mutate(dir)}
-            title="Set up deps + run the backend & frontend"
+            onClick={onRun}
+            title="Set up deps, run the backend & frontend, and open the app in a new tab"
           >
             {setting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
             {anyActive ? 'Re-run' : 'Run'}
@@ -150,6 +258,13 @@ function AppRunnerCard({ dir, name }: { dir: string; name: string }) {
         </div>
       ) : (
         <p className="flex flex-1 items-center justify-center text-xs text-[#71717a]">{data?.note || 'No runnable backend/frontend detected here.'}</p>
+      )}
+
+      {popupBlocked && (
+        <p className="text-[11px] text-omnivra-amber" role="status">
+          Your browser blocked the new tab. The app is still starting — use the Open button above when
+          it turns green, or allow pop-ups for this site to have it open automatically.
+        </p>
       )}
 
       {logs && (

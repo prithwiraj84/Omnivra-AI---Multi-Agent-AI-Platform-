@@ -11,6 +11,8 @@ from app.core.logging import logger
 from app.graph.state import AgentOutput
 from app.providers.base import CompletionRequest
 from app.providers.registry import ProviderRegistry
+from app.services import agent_activity
+from app.services.provider_keys import current_key_owner
 from app.services.usage import record_agent_call
 
 
@@ -56,6 +58,16 @@ def build_system_prompt(spec: AgentSpec) -> str:
     return base + _CODE_FILE_INSTRUCTION if spec.id in _CODE_AGENTS else base
 
 
+async def _emit_agent_status(agent_id: str, status: str) -> None:
+    """Push a live agent working/idle transition to connected dashboards. Best-effort."""
+    try:
+        from app.services.realtime import emit
+
+        await emit("agent_activity", {"agentId": agent_id, "status": status})
+    except Exception as exc:  # noqa: BLE001 - telemetry must never break an agent call
+        logger.debug("agent_activity emit failed: {}", exc)
+
+
 async def run_agent(
     agent_id: str,
     task: str,
@@ -68,7 +80,35 @@ async def run_agent(
 
     Never raises: provider failures are caught and returned as ``ok=False`` so one
     failed delegation cannot crash the whole workflow.
+
+    This is also where an agent is marked LIVE-WORKING for the dashboard. It has to happen
+    here rather than in the workflow graph: Document Studio and Social Studio call agents
+    directly, without a workflow run, so a run-derived status leaves them showing "Idle" for
+    the entire generation. Registering at the single funnel means a future caller cannot
+    forget to. Events fire only on 0->1 / 1->0 transitions, so a fan-out of concurrent calls
+    to the same agent doesn't spam the socket.
     """
+    owner = current_key_owner()
+    if agent_activity.begin(agent_id, owner):
+        await _emit_agent_status(agent_id, "working")
+    try:
+        return await _complete_agent(agent_id, task, registry=registry, context=context, max_tokens=max_tokens)
+    finally:
+        # finally, not a trailing call: a cancelled or crashing agent must still be released,
+        # or it stays "working" on the dashboard until the staleness cutoff.
+        if agent_activity.end(agent_id, owner):
+            await _emit_agent_status(agent_id, "idle")
+
+
+async def _complete_agent(
+    agent_id: str,
+    task: str,
+    *,
+    registry: ProviderRegistry,
+    context: str = "",
+    max_tokens: int = 512,
+) -> AgentOutput:
+    """The actual provider call + cross-provider fallback (see run_agent)."""
     spec = get_agent(agent_id)
     primary = registry.get(spec.provider)
 

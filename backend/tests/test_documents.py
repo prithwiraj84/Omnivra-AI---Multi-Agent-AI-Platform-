@@ -362,11 +362,11 @@ def test_image_cap_enforced_and_skips_without_key(tmp_path, monkeypatch) -> None
         return secs
 
     # text-only genre (legal): all image requests dropped
-    legal = asyncio.get_event_loop().run_until_complete(run("legal", 3))
+    legal = asyncio.run(run("legal", 3))
     assert all(s.image is None for s in legal)
 
     # image genre (casual, max 2): no HF key -> requests kept but capped to 2, paths all None
-    casual = asyncio.get_event_loop().run_until_complete(run("casual", 4))
+    casual = asyncio.run(run("casual", 4))
     kept = [s for s in casual if s.image is not None]
     assert len(kept) <= 2
     assert all(s.image.path is None for s in kept)

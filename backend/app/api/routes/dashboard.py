@@ -13,6 +13,7 @@ from app import schemas
 from app.api.deps import current_user, get_repo
 from app.core.config import get_settings
 from app.db.repositories import DashboardRepository
+from app.services import agent_activity
 from app.services.dashboard_live import build_live_dashboard
 
 router = APIRouter(tags=["dashboard"])
@@ -34,9 +35,13 @@ def get_dashboard(
     running system (their workflow runs, tasks, RAG sizes, approvals, usage) — not seed demo."""
     ttl = get_settings().dashboard_cache_ttl
     now = time.monotonic()
+    # An agent starting or finishing must show up NOW, not when the TTL happens to lapse: a short
+    # generation can begin and end inside one cached window, so a purely time-based cache would
+    # render it as if nothing ever ran. The revision changes on every transition.
+    rev = agent_activity.revision()
     entry = _cache.get(current)
-    if ttl > 0 and entry is not None and (now - entry["ts"]) < ttl:
+    if ttl > 0 and entry is not None and (now - entry["ts"]) < ttl and entry["rev"] == rev:
         return entry["payload"]
     payload = build_live_dashboard(repo.get_dashboard(), owner_id=current)
-    _cache[current] = {"ts": now, "payload": payload}
+    _cache[current] = {"ts": now, "rev": rev, "payload": payload}
     return payload

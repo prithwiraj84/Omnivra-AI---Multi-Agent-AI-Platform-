@@ -90,6 +90,14 @@ export function useWebSocket() {
           }
           break
         }
+        case 'agent_activity': {
+          // An agent started or finished an LLM call — including Document/Social Studio work,
+          // which has no workflow behind it. Refresh now so the roster flips to Active while the
+          // work is actually happening rather than on the next poll (or, for a short generation,
+          // never).
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+          break
+        }
         case 'social_progress': {
           // Live per-step generation/render progress -> the Social Studio store.
           const p = payload as SocialProgressEvent | null

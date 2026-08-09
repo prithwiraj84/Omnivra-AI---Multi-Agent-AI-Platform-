@@ -33,6 +33,7 @@ from app.schemas.dashboard import (
     TaskPoint,
     WorkflowItem,
 )
+from app.services import agent_activity
 from app.services.artifacts import get_artifact_service
 from app.services.knowledge import get_knowledge_service
 from app.services.memory import get_memory_service
@@ -140,6 +141,10 @@ def build_live_dashboard(base: DashboardPayload, *, owner_id: str | None = None)
             working_agents |= {ca} if ca else _run_agents(r)
         elif r.status == "awaiting_approval":
             awaiting_agents |= _run_agents(r)
+    # IN-FLIGHT agents, from the live registry every LLM call funnels through. This is what makes
+    # Document Studio / Social Studio work visible: those call agents DIRECTLY, with no workflow
+    # run behind them, so a purely run-derived status showed them idle for the whole generation.
+    working_agents |= agent_activity.active_agents(owner_id)
     awaiting_agents -= working_agents  # a live run wins over a stale gate for the same agent
     busy_agents = working_agents | awaiting_agents
     media_calls = usage_snapshot().get("media", {})  # media is session-scoped (no persisted log)
