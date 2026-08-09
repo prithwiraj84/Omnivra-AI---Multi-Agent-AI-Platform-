@@ -228,8 +228,20 @@ def get_project_id(
 
 
 def require_user(authorization: str | None = Header(default=None)) -> str:
-    """Auth gate. Open (returns admin) unless settings.auth_enabled; else require a valid Bearer token."""
+    """Auth gate for action routes (run a workflow, draft social, render, …).
+
+    PER-USER MODE FIRST: the verified Supabase identity IS the authentication. Checking the
+    legacy admin token here instead rejected every valid Supabase session with 401 — in exactly
+    the recommended production config (AUTH_ENABLED=true on a public host + per-user
+    workspaces), "Assign to CEO" and every other require_user route failed for signed-in users,
+    because the browser sends a Supabase access token and `verify_token` only accepts tokens
+    this backend signed itself.
+
+    Otherwise: open (returns admin) unless AUTH_ENABLED; else require the legacy bearer token.
+    """
     settings = get_settings()
+    if per_user_mode():
+        return current_user(authorization)
     if not settings.auth_enabled:
         return settings.admin_username
     token = _bearer(authorization)

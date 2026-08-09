@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useRunWorkflow } from '@/hooks/useRunWorkflow'
 import { useWorkflowRun } from '@/hooks/useWorkflowRuns'
+import { apiErrorMessage } from '@/lib/api/errors'
 
 /** First 8 chars of a workflow id, for a compact inline reference. */
 function shortId(id: string): string {
@@ -80,7 +81,13 @@ export function RunTask() {
       {(result || run.isError || pollFailed) && (
         <p className="text-xs text-[#a1a1aa]" role="status" aria-live="polite">
           {(run.isError || pollFailed) && (
-            <span className="text-omnivra-pink">Could not reach the company. Try again.</span>
+            <span className="text-omnivra-pink">
+              {/* The server's own explanation (401 session expired / 404 stale project / 429)
+                  beats a blanket "could not reach" — those need three different fixes. */}
+              {run.isError
+                ? apiErrorMessage(run.error, 'assign the task')
+                : 'Lost track of the run — refresh to see its status.'}
+            </span>
           )}
           {result && !pollFailed && (
             <>

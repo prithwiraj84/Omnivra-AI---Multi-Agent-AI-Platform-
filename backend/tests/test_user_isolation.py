@@ -209,3 +209,37 @@ def test_media_is_loadable_by_the_browser(client, multiuser):
         assert client.get(f"{url}&t={_token('media-user')}").status_code == 401
     finally:
         client.delete(f"/api/projects/{pid}", headers=_auth(tok))
+
+
+def test_supabase_session_passes_the_action_gate_when_auth_enabled(client, multiuser, monkeypatch) -> None:
+    """The production combo DEPLOY.md recommends: AUTH_ENABLED=true (public host) + per-user
+    workspaces. require_user used to verify the LEGACY admin token here, so every valid
+    Supabase session got 401 on the action routes — 'Assign to CEO' answered
+    'Could not reach the company' for every signed-in user.
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "auth_enabled", True, raising=False)
+    tok = _token("action-user")
+
+    # The action gate (require_user) + project scoping (current_user) must BOTH accept the
+    # Supabase token. 200 = dispatched; the graph runs in the background with stub providers.
+    res = client.post("/api/workflows/run", json={"task": "smoke the gate"}, headers=_auth(tok))
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "running"
+
+    # No token still fails closed.
+    assert client.post("/api/workflows/run", json={"task": "x"}).status_code == 401
+
+
+def test_legacy_gate_unchanged_outside_per_user_mode(client, monkeypatch) -> None:
+    """Regression guard: single-admin + AUTH_ENABLED still requires the LEGACY token."""
+    from app.core.config import get_settings
+    from app.core.security import create_token
+
+    monkeypatch.setattr(get_settings(), "auth_enabled", True, raising=False)
+
+    assert client.post("/api/workflows/run", json={"task": "x"}).status_code == 401
+    legacy = create_token("admin", ttl_seconds=600, scope="session")
+    ok = client.post("/api/workflows/run", json={"task": "legacy ok"}, headers=_auth(legacy))
+    assert ok.status_code == 200, ok.text
