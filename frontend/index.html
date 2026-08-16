@@ -7,7 +7,17 @@
     <link rel="mask-icon" href="/mask-icon.svg" color="#6366f1" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a0a0f" />
+    <!-- Raster lockup for places that can't render SVG: iOS home screens and social cards.
+         Drop the full Omnivra logo at public/omnivra-logo.png (1536x1024 or larger) — these
+         activate the moment the file exists and degrade silently until then. -->
+    <link rel="apple-touch-icon" href="/omnivra-logo.png" />
     <title>Omnivra - AI Company OS</title>
+    <meta name="description" content="Omnivra — a multi-agent AI company OS: 23 specialist agents that plan, build, review and publish, with a human approval gate on every step." />
+    <meta property="og:title" content="Omnivra — Multi Agent AI" />
+    <meta property="og:description" content="An autonomous AI company: 23 specialist agents that plan, build, review and publish — human-approved, every time." />
+    <meta property="og:image" content="/omnivra-logo.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />

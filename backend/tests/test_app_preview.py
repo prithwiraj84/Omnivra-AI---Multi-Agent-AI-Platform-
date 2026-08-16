@@ -310,3 +310,29 @@ def test_preview_is_found_across_sibling_category_dirs(client: TestClient) -> No
 
         shutil.rmtree(root / "backend/wf_split", ignore_errors=True)
         shutil.rmtree(root / "frontend/wf_split", ignore_errors=True)
+
+
+def test_a_no_build_generated_app_previews_with_no_extra_machinery(client: TestClient) -> None:
+    """The shape the builders now produce (cp-0077): index.html + styles.css + an ES-module
+    script, NO package.json. It must preview as-is — no harness, no build, no server."""
+    _write("index.html", '<link rel="stylesheet" href="styles.css"><div id="app"></div>'
+                         '<script type="module" src="app.js"></script>')
+    _write("styles.css", "body{background:#111}")
+    _write("app.js", "document.getElementById('app').textContent = 'hi'")
+
+    assert preview_rel(None, APP) == f"{APP}/index.html"
+
+    page = client.get(f"/api/workspace/app/preview/__default__/{APP}/index.html")
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    js = client.get(f"/api/workspace/app/preview/__default__/{APP}/app.js")
+    assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
+
+
+def test_a_no_build_app_has_no_launchable_target_but_still_previews(client: TestClient) -> None:
+    """No package.json means no runnable TARGET — the card must still offer the app, which is
+    why the UI's run decision keys off 'is anything launchable', not just 'is the runner on'."""
+    _write("index.html", "<h1>static</h1>")
+    status = client.get("/api/workspace/app/status", params={"dir": APP}).json()
+    assert status["targets"] == []
+    assert status["previewPath"] == f"{APP}/index.html"
+    assert status["note"] == "", "an app with a preview is not an empty run"

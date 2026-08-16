@@ -41,6 +41,41 @@ _CODE_FILE_INSTRUCTION = (
     "No placeholders, no '...'. A short note is fine, but the code files ARE the deliverable."
 )
 
+# Agents that own the thing the user actually LOOKS AT.
+_WEB_AGENTS = {"uiux-designer", "frontend-engineer"}
+
+# The delivery contract that makes a generated app OPEN AND RUN, everywhere.
+#
+# Why this is mandatory rather than a preference: the app is browsed from a hosted deployment
+# that cannot launch processes (no Node, no dev server, no npm install — a shared host can't
+# expose a localhost port and running generated code there is an AUP risk). A Vite/CRA project
+# is SOURCE: it needs a build before a browser can render it, so it previews as a broken page
+# or not at all. A no-build page needs nothing but the browser already open in front of the
+# user — and it runs identically on their laptop.
+_WEB_APP_INSTRUCTION = (
+    "\n\nCRITICAL DELIVERY CONTRACT — the app MUST run by opening index.html in a browser, with "
+    "NO build step, NO bundler, NO npm install, NO dev server and NO backend required:\n"
+    "1. ALWAYS produce `index.html` at the app root. It is the entry point and must be complete "
+    "and self-contained enough to render on its own.\n"
+    "2. Plain `<script type=\"module\">` + a linked `styles.css`. NEVER emit package.json, vite/"
+    "webpack config, JSX/TSX that needs compiling, or bare imports like `import React from "
+    "'react'`. If you want React, import it from a CDN URL "
+    "(`import React from 'https://esm.sh/react@18.3.1'`) — but vanilla JS is usually better here.\n"
+    "3. Persist data with localStorage. Do NOT assume an API exists.\n"
+    "4. If the project also has a backend, the page must STILL work standalone: ship realistic "
+    "seed data in the JS and only call the API when it is actually reachable, degrading quietly.\n"
+    "5. Make it genuinely usable and good-looking: real interactivity, responsive layout, sensible "
+    "empty states. It is a product someone will open and use, not a demo skeleton."
+)
+
+# The architect frames the build, so it must not plan an architecture the deployment can't run.
+_ARCHITECT_WEB_INSTRUCTION = (
+    "\n\nDeployment constraint that shapes the design: the frontend MUST be a static, no-build "
+    "web app (index.html + styles.css + ES-module JS, opened directly in a browser, state in "
+    "localStorage). Plan for that. A backend is optional and must never be REQUIRED for the UI "
+    "to run — design the client so it works standalone and enriches itself if an API is present."
+)
+
 
 def is_code_agent(agent_id: str) -> bool:
     """True for builder agents expected to emit real code files (drives token budget + persistence)."""
@@ -50,12 +85,18 @@ def is_code_agent(agent_id: str) -> bool:
 def build_system_prompt(spec: AgentSpec) -> str:
     """Role/system prompt that frames an agent for its provider."""
     responsibilities = ", ".join(spec.responsibilities) or "your area of expertise"
-    base = (
+    prompt = (
         f"You are the {spec.name}, the {spec.department.value} specialist at Omnivra, "
         f"an autonomous AI software company. Your responsibilities: {responsibilities}. "
         "Produce concrete, professional, well-structured output for the task. Be concise."
     )
-    return base + _CODE_FILE_INSTRUCTION if spec.id in _CODE_AGENTS else base
+    if spec.id in _CODE_AGENTS:
+        prompt += _CODE_FILE_INSTRUCTION
+    if spec.id in _WEB_AGENTS:
+        prompt += _WEB_APP_INSTRUCTION
+    elif spec.id == "solution-architect":
+        prompt += _ARCHITECT_WEB_INSTRUCTION
+    return prompt
 
 
 async def _emit_agent_status(agent_id: str, status: str) -> None:

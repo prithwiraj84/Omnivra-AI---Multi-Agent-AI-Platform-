@@ -115,3 +115,22 @@ describe('runAction', () => {
     expect(runAction(true, null)).toBe('explain')
   })
 })
+
+describe('runAction with no launchable target (static no-build app)', () => {
+  it('opens the preview locally instead of posting a run that has nothing to start', async () => {
+    // Generated apps are now static pages with no package.json -> zero launchable targets.
+    // Treating "runner is on" as "launch" would spin a placeholder tab forever.
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(false, '/preview/index.html', false)).toBe('preview')
+  })
+
+  it('still launches when there IS a server to start', async () => {
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(false, '/preview/index.html', true)).toBe('launch')
+  })
+
+  it('explains when there is neither a target nor a preview', async () => {
+    const { runAction } = await import('@/components/workspace/app-runner-panel')
+    expect(runAction(false, null, false)).toBe('explain')
+  })
+})

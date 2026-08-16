@@ -88,14 +88,23 @@ function TargetRow({ t, dir }: { t: AppTarget; dir: string }) {
 const TERMINAL: AppTargetStatus[] = ['exited', 'error', 'stopped']
 
 /**
- * What a Run click should do on this deployment. Exported for tests.
- *  - 'launch'  the runner can start real servers (local) — open the placeholder tab + POST run
- *  - 'preview' launching is off but the app can render in the browser — open the preview
- *  - 'explain' launching is off and there is nothing browser-runnable (backend-only app):
- *              opening a tab would only ever show a dead end, so say so INLINE instead.
+ * What a Run click should do. Exported for tests.
+ *  - 'launch'  there is a server to start AND this deployment can start it
+ *  - 'preview' the app renders in the browser — open it directly
+ *  - 'explain' nothing to launch and nothing to render: say so INLINE rather than opening a
+ *              tab whose only possible future is a dead end.
+ *
+ * `hasLaunchable` matters even when the runner is ON: generated apps are now static no-build
+ * pages (index.html + ES modules, no package.json), which have no launchable TARGET at all.
+ * Without this the local Run would post a run, get zero targets back, and leave the placeholder
+ * tab spinning forever on an app that was ready to open the whole time.
  */
-export function runAction(runnerOff: boolean, previewHref: string | null): 'launch' | 'preview' | 'explain' {
-  if (!runnerOff) return 'launch'
+export function runAction(
+  runnerOff: boolean,
+  previewHref: string | null,
+  hasLaunchable = true,
+): 'launch' | 'preview' | 'explain' {
+  if (!runnerOff && hasLaunchable) return 'launch'
   return previewHref ? 'preview' : 'explain'
 }
 
@@ -204,8 +213,9 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
       pendingTab.current = null
       return
     }
-    // No live server is coming on this deployment — the static preview IS the destination.
-    if (runnerOff && previewHref) {
+    // No live server is coming (runner off, or a static app with nothing to launch) — the
+    // preview IS the destination.
+    if (previewHref && runAction(runnerOff, previewHref, targets.length > 0) === 'preview') {
       win.location.replace(previewHref)
       pendingTab.current = null
       return
@@ -221,7 +231,7 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
   }, [targets, run.isPending, data?.note, runnerOff, previewHref])
 
   const onRun = () => {
-    const action = runAction(runnerOff, previewHref)
+    const action = runAction(runnerOff, previewHref, targets.length > 0)
     if (action === 'preview') {
       window.open(previewHref as string, '_blank', 'noopener')
       return
@@ -268,8 +278,18 @@ function AppRunnerCard({ dir, name, previewPath }: { dir: string; name: string; 
             onClick={onRun}
             title="Set up deps, run the backend & frontend, and open the app in a new tab"
           >
-            {setting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : runnerOff && previewHref ? <ExternalLink className="h-3.5 w-3.5" aria-hidden /> : <Play className="h-3.5 w-3.5" aria-hidden />}
-            {runnerOff && previewHref ? 'Preview' : anyActive ? 'Re-run' : 'Run'}
+            {setting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : runAction(runnerOff, previewHref, targets.length > 0) === 'preview' ? (
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            ) : (
+              <Play className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {runAction(runnerOff, previewHref, targets.length > 0) === 'preview'
+              ? 'Open app'
+              : anyActive
+                ? 'Re-run'
+                : 'Run'}
           </Button>
           {anyActive && (
             <Button type="button" size="sm" variant="outline" disabled={stop.isPending} onClick={() => stop.mutate({ dir })} className="hover:text-omnivra-red">

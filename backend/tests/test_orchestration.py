@@ -198,3 +198,50 @@ def test_frontend_guarantee_survives_a_full_team() -> None:
     plan = plan_delegations("build a web app for inventory", ceo)
     assert len(plan) == 8
     assert "frontend-engineer" in plan
+
+
+# --- the browser-runnable contract (cp-0077) -------------------------------------------------
+# Generated apps kept arriving as Vite/CRA SOURCE (needs a build) or backend-only (needs a
+# server) — neither of which a shared host can run, so "Run" had nothing to open. The builders
+# are now told to ship a no-build page instead.
+
+
+def test_web_builders_are_told_to_ship_a_no_build_page() -> None:
+    from app.agents.registry import get_agent
+    from app.agents.runner import build_system_prompt
+
+    for agent_id in ("frontend-engineer", "uiux-designer"):
+        prompt = build_system_prompt(get_agent(agent_id))
+        assert "index.html" in prompt, agent_id
+        assert "NO build step" in prompt and "NO bundler" in prompt, agent_id
+        assert "localStorage" in prompt, agent_id
+        # The two shapes that produced unrunnable apps must be named as forbidden.
+        assert "package.json" in prompt and "esm.sh" in prompt, agent_id
+
+
+def test_architect_plans_for_a_static_frontend() -> None:
+    from app.agents.registry import get_agent
+    from app.agents.runner import build_system_prompt
+
+    prompt = build_system_prompt(get_agent("solution-architect"))
+    assert "no-build" in prompt and "localStorage" in prompt
+    assert "never be REQUIRED" in prompt, "the UI must not depend on a backend existing"
+
+
+def test_backend_builders_keep_their_own_contract() -> None:
+    """The web contract is for the agents that own what the user LOOKS AT — a backend engineer
+    told to ship index.html would stop writing the API."""
+    from app.agents.registry import get_agent
+    from app.agents.runner import build_system_prompt
+
+    prompt = build_system_prompt(get_agent("backend-engineer"))
+    assert "name=<path>" in prompt, "still delivers real files"
+    assert "NO build step" not in prompt
+
+
+def test_non_code_agents_get_neither_contract() -> None:
+    from app.agents.registry import get_agent
+    from app.agents.runner import build_system_prompt
+
+    prompt = build_system_prompt(get_agent("seo-researcher"))
+    assert "index.html" not in prompt and "name=<path>" not in prompt
